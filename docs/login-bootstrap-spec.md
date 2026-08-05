@@ -64,7 +64,16 @@ On the connect action:
    more)
 3. redirect to `${VITE_BACKEND_URL}/auth/oauth2/authorize` with `client_id`,
    `redirect_uri`, `response_type=code`, `scope=openai:chat`,
-   `code_challenge` (S256), `state`
+   `code_challenge` (S256), `state`, **and `resource`**
+
+`resource` is the **canonical backend origin** (RFC 8707) — the origin of
+`VITE_BACKEND_URL`, not the full URL including `/api`. It must be sent on
+**both** the authorize request and the token exchange, and it must match what
+Track A validates as the token audience. Omit it and every token fails audience
+validation with an opaque 401. This is a hard contract with Track A; if the two
+sides disagree about canonicalization (trailing slash, path, case), nothing
+works — confirm the exact string against Track A's implementation rather than
+deriving it independently.
 
 On callback:
 
