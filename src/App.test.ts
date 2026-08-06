@@ -3,7 +3,7 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { AssistantResponseKindBadge, buildConversationHistory, deriveCurrentUserTurn, draftHtmlToPlainText, InfluenceBadge, MapActionProposalCard, migrateCandidateMemory, migrateLegacyMirrors, migrateStoredProposals, normalizeDraftPasteHtml, recoverFailedTurn, resolveMirrorDecision, restoreDraftHtml, restoreFailedMessageToComposer, TURN_PROGRESS_COPY } from "./App";
+import { AssistantResponseKindBadge, buildConversationHistory, copyTextToClipboard, deriveCurrentUserTurn, draftHtmlToPlainText, InfluenceBadge, MapActionProposalCard, migrateCandidateMemory, migrateLegacyMirrors, migrateStoredProposals, normalizeDraftPasteHtml, recoverFailedTurn, resolveMirrorDecision, restoreDraftHtml, restoreFailedMessageToComposer, TURN_PROGRESS_COPY } from "./App";
 import { hasPersistableWork } from "./session-persistence";
 import { UnderTheHoodPanel } from "./ControlRoom";
 import { ASSISTANCE_CONTRACTS, snapshotContract } from "./assistance-contract";
@@ -52,6 +52,15 @@ describe("resolveMirrorDecision", () => {
     expect(second.anyConfirmed).toBe(true);
     expect(second.anyDeclined).toBe(true);
     expect(second.shouldContinue).toBe(false);
+  });
+});
+
+describe("clipboard output", () => {
+  it("writes the exact supplied text and fails when clipboard access is unavailable", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    await copyTextToClipboard("exact text", { writeText });
+    expect(writeText).toHaveBeenCalledWith("exact text");
+    await expect(copyTextToClipboard("text", undefined)).rejects.toThrow("Clipboard access is unavailable");
   });
 });
 

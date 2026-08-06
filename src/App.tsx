@@ -19,6 +19,7 @@ import { ASSISTANCE_CONTRACTS, contractForLevel, DEFAULT_ASSISTANCE_CONTRACT, no
 import { EventLedger, type LedgerEventKind } from "./event-ledger";
 import { reconcileStoreSuggestionAdoption, type VisibleSuggestion } from "./suggestion-adoption";
 import { provenanceTotals } from "./provenance-summary";
+import { formatMapAsMarkdown } from "./map-export";
 import { useMutationAccess } from "./mutation-policy";
 import { useUiLocale } from "./ui-locale";
 import { useReaderView } from "./reader-view";
@@ -2697,6 +2698,14 @@ export interface AppProps {
   aiAccessDenied?: boolean;
 }
 
+export async function copyTextToClipboard(
+  text: string,
+  clipboard: Pick<Clipboard, "writeText"> | undefined = typeof navigator === "undefined" ? undefined : navigator.clipboard,
+): Promise<void> {
+  if (!clipboard) throw new Error("Clipboard access is unavailable.");
+  await clipboard.writeText(text);
+}
+
 export default function App({ providerRuntime, aiAccessDenied = false }: AppProps) {
   const { locale, t } = useUiLocale();
   const reader = useReaderView();
@@ -3042,6 +3051,7 @@ export default function App({ providerRuntime, aiAccessDenied = false }: AppProp
 
   // Draft panel state
   const [draftText, setDraftText] = useState(initialDraftText);
+  const [clipboardStatus, setClipboardStatus] = useState("");
   const [draftHtml, setDraftHtml] = useState(initialDraftHtml);
   const [draftCollapsed, setDraftCollapsed] = useState(initialDraftCollapsed);
   const [draftDocked, setDraftDocked] = useState(initialDraftDocked);
@@ -3721,6 +3731,24 @@ export default function App({ providerRuntime, aiAccessDenied = false }: AppProp
     }
   }
 
+  const copyDraft = useCallback(async () => {
+    try {
+      await copyTextToClipboard(draftText);
+      setClipboardStatus(t("Draft copied"));
+    } catch {
+      setClipboardStatus(t("Could not copy the draft. Select it and copy manually."));
+    }
+  }, [draftText, t]);
+
+  const copyMap = useCallback(async () => {
+    try {
+      await copyTextToClipboard(formatMapAsMarkdown(mapStoreRef.current.snapshot()));
+      setClipboardStatus(t("Map copied"));
+    } catch {
+      setClipboardStatus(t("Could not copy the map. Please try again."));
+    }
+  }, [t]);
+
   // Runs a coach-only turn without synthetic user text. A panel request replaces
   // its prior coach move; a completed proposal appends a genuine continuation.
   async function requestMode(mode?: UserRequestedMode, proposalOutcome?: ProposalOutcomeContext, currentMapRevision = mapRevision, recoveryId?: number) {
@@ -4270,6 +4298,9 @@ export default function App({ providerRuntime, aiAccessDenied = false }: AppProp
         >
           <div className="draft-panel-header" onMouseDown={onDragStart}>
             <span className="draft-panel-title">{t("Draft")}</span>
+            <button className="draft-panel-btn" type="button" onClick={() => void copyDraft()}>
+              {t("Copy draft")}
+            </button>
             <button
               className="draft-panel-btn"
               type="button"
@@ -4378,6 +4409,7 @@ export default function App({ providerRuntime, aiAccessDenied = false }: AppProp
             onRequireConnectionLabelChange={changeConnectionSetting}
             canUndo={canUndoMap}
             onUndo={undoMapChange}
+            onCopyMap={() => void copyMap()}
             onClearDraft={clearDraftOnly}
             onClearMap={clearMapOnly}
             onContextCardToggle={toggleContextCard}
@@ -4399,6 +4431,7 @@ export default function App({ providerRuntime, aiAccessDenied = false }: AppProp
             provenance={provenanceTotals(mapStoreRef.current.getAll(), mapStoreRef.current.getConnections())}
           />
         </div>
+        <div className="clipboard-status" role="status" aria-live="polite">{clipboardStatus}</div>
       </div>
     </>
   );
