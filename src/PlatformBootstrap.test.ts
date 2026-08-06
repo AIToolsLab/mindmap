@@ -5,8 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppErrorBoundary, browserStorage, initialBootState } from "./PlatformBootstrap";
 import { SESSION_STORAGE_KEY } from "./session-persistence";
 import {
-  PLATFORM_SESSION_STORAGE_KEY,
-  type PlatformSession,
+  OAUTH_SESSION_STORAGE_KEY,
 } from "./platform-session";
 
 function Boom(): ReactNode {
@@ -72,27 +71,18 @@ describe("AppErrorBoundary", () => {
     getItem.mockRestore();
   });
 
-  it("routes an expired stored token to relaunch guidance without clearing saved work", () => {
-    const session: PlatformSession = {
-      version: 1,
-      accessToken: "wtk_expired",
-      expiresAt: Date.now() - 1,
-      scopes: ["openai:chat"],
-      doc: null,
-      capturedAt: Date.now() - 1000,
-    };
+  it("ignores an expired OAuth token without clearing saved work", () => {
+    const session = { version: 1, accessToken: "a.b.c", expiresAt: Date.now() - 1 };
     window.sessionStorage.setItem(
-      PLATFORM_SESSION_STORAGE_KEY,
+      OAUTH_SESSION_STORAGE_KEY,
       JSON.stringify(session),
     );
     window.localStorage.setItem(
       SESSION_STORAGE_KEY,
       JSON.stringify({ version: 7, draftText: "keep me" }),
     );
-    expect(initialBootState()).toEqual({
-      kind: "blocked",
-      reason: "token_expired",
-    });
+    expect(initialBootState()).toEqual({ kind: "ready", session: null });
+    expect(window.sessionStorage.getItem(OAUTH_SESSION_STORAGE_KEY)).toBeNull();
     expect(window.localStorage.getItem(SESSION_STORAGE_KEY)).toContain("keep me");
   });
 });

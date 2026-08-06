@@ -191,5 +191,17 @@
   "Saved mindmap",
   "Restore to composer",
   "Mindmap needs browser storage",
-  "Browser storage is unavailable, so Mindmap cannot safely preserve your access or local work. Enable storage for this site and launch again."
+  "Browser storage is unavailable, so Mindmap cannot safely preserve your access or local work. Enable storage for this site and launch again.",
+  "Connect to Writing Tools",
+  "Sign in to use Writing Tools AI. Your draft and map stay in this browser.",
+  "Connect",
+  "Disconnect",
+  "Writing Tools access was not granted.",
+  "Writing Tools could not complete the login.",
+  "The login response could not be verified. Please try again.",
+  "Writing Tools could not complete the login. Please try again.",
+  "Mindmap could not start a secure login. Please try again.",
+  "Your Writing Tools access expired. Your local work is still here.",
+  "Browser storage is unavailable, so Mindmap cannot safely preserve your access or local work. Enable storage for this site and reload.",
+  "This account is not enabled for Writing Tools AI. Contact the Writing Tools team for access. Your draft and map remain available."
 ]

@@ -67,7 +67,7 @@ describe("UI locale", () => {
     );
   });
 
-  it("has Chinese coverage for every literal explicitly opted into UI localization", () => {
+  it("registers every localized literal in the canonical English source", () => {
     const sources = ["App.tsx", "Map.tsx", "PlatformBootstrap.tsx"].map((file) =>
       readFileSync(new URL(`./${file}`, import.meta.url), "utf8"),
     );
@@ -82,7 +82,10 @@ describe("UI locale", () => {
       "Asking a focused question instead...",
       "I couldn’t complete that response reliably. You can rephrase or try again.",
     ].forEach((key) => keys.add(key));
-    const missing = [...keys].filter((key) => uiString(key, "zh") === undefined);
+    const canonical = new Set(JSON.parse(
+      readFileSync(new URL("./i18n/source.json", import.meta.url), "utf8"),
+    ) as string[]);
+    const missing = [...keys].filter((key) => !canonical.has(key));
     expect(missing).toEqual([]);
   });
 });

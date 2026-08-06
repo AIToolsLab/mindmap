@@ -20,7 +20,7 @@ import { EventLedger, type LedgerEventKind } from "./event-ledger";
 import { reconcileStoreSuggestionAdoption, type VisibleSuggestion } from "./suggestion-adoption";
 import { provenanceTotals } from "./provenance-summary";
 import { useMutationAccess } from "./mutation-policy";
-import { interpolateUi, useUiLocale } from "./ui-locale";
+import { useUiLocale } from "./ui-locale";
 import { useReaderView } from "./reader-view";
 import { UnderTheHoodPanel } from "./ControlRoom";
 import {
@@ -31,7 +31,6 @@ import {
   type DraftPanelPos,
   type DraftPanelSize,
   type DraftSelectionFocus,
-  type DraftSourceMetadata,
   type PersistedPendingMirror,
   type PersistedSession,
 } from "./session-persistence";
@@ -2695,11 +2694,10 @@ function UnderhoodIcon() {
 
 export interface AppProps {
   providerRuntime?: ProviderRuntimeConfig;
-  initialDraft?: { text: string; source?: DraftSourceMetadata };
   aiAccessDenied?: boolean;
 }
 
-export default function App({ providerRuntime, initialDraft, aiAccessDenied = false }: AppProps) {
+export default function App({ providerRuntime, aiAccessDenied = false }: AppProps) {
   const { locale, t } = useUiLocale();
   const reader = useReaderView();
   const mutationAccess = useMutationAccess();
@@ -2711,7 +2709,7 @@ export default function App({ providerRuntime, initialDraft, aiAccessDenied = fa
   const initialState = useMemo(() => {
     const state = createConversationState();
     if (!persistedSession) {
-      state.draft = initialDraft?.text ?? "";
+      state.draft = "";
       return state;
     }
     state.bank.replaceAll(persistedSession.bank);
@@ -2731,7 +2729,7 @@ export default function App({ providerRuntime, initialDraft, aiAccessDenied = fa
     state.currentDraftSnapshotId = persistedSession.conversation?.currentDraftSnapshotId;
     state.draftSnapshotText = persistedSession.conversation?.draftSnapshotText;
     return state;
-  }, [initialDraft?.text, persistedSession]);
+  }, [persistedSession]);
 
   const initialMapStore = useMemo(() => {
     const store = new ThoughtUnitStore();
@@ -2760,7 +2758,7 @@ export default function App({ providerRuntime, initialDraft, aiAccessDenied = fa
   const initialMapRevision = persistedSession?.mapRevision ?? 0;
   const initialQuestionBias = snapQuestionBias(persistedSession?.questionBias ?? 35);
   const initialRequireConnectionLabel = persistedSession?.requireConnectionLabel ?? true;
-  const initialDraftText = persistedSession?.draftText ?? initialDraft?.text ?? "";
+  const initialDraftText = persistedSession?.draftText ?? "";
   const initialDraftHtml = restoreDraftHtml(persistedSession?.draftHtml, initialDraftText);
   const initialDraftCollapsed = persistedSession?.draftCollapsed ?? false;
   const initialDraftDocked = persistedSession?.draftDocked ?? false;
@@ -2771,7 +2769,6 @@ export default function App({ providerRuntime, initialDraft, aiAccessDenied = fa
     ? clampDraftPosition(persistedSession.draftPos, initialDraftSize)
     : { x: 0, y: 0 };
   const initialStickyDraftFocus = persistedSession?.stickyDraftFocus;
-  const initialDraftSource = persistedSession?.draftSource ?? initialDraft?.source;
 
   const stateRef = useRef<ConversationState>(initialState);
   const configRef = useRef<MindmapConfig>(withQuestionIntentBias(defaultConfig, initialQuestionBias));
@@ -2805,7 +2802,6 @@ export default function App({ providerRuntime, initialDraft, aiAccessDenied = fa
   const [contextSelectedCardIds, setContextSelectedCardIds] = useState<Set<string>>(new Set());
   const [draftSelectionFocus, setDraftSelectionFocus] = useState<DraftSelectionFocus | undefined>(undefined);
   const [stickyDraftFocus, setStickyDraftFocus] = useState<DraftSelectionFocus | undefined>(initialStickyDraftFocus);
-  const [draftSource, setDraftSource] = useState<DraftSourceMetadata | undefined>(initialDraftSource);
   const ledgerRef = useRef(new EventLedger(initialSessionId));
   const contract = contractForLevel(assistanceLevel);
 
@@ -3564,7 +3560,6 @@ export default function App({ providerRuntime, initialDraft, aiAccessDenied = fa
       draftDocked,
       draftPos,
       draftSize,
-      draftSource,
       lastSavedAt: Date.now(),
       stickyDraftFocus,
       conversation: {
@@ -3598,7 +3593,6 @@ export default function App({ providerRuntime, initialDraft, aiAccessDenied = fa
     draftPos,
     draftSize,
     draftText,
-    draftSource,
     lastCoachDebug,
     understandingSnapshot,
     mapRevision,
@@ -3974,7 +3968,6 @@ export default function App({ providerRuntime, initialDraft, aiAccessDenied = fa
     setHighlightAnchor(undefined);
     setDraftSelectionFocus(undefined);
     setStickyDraftFocus(undefined);
-    setDraftSource(undefined);
     stateRef.current.draft = "";
   }
 
@@ -4144,7 +4137,7 @@ export default function App({ providerRuntime, initialDraft, aiAccessDenied = fa
           </div>
 
           <div className="input-area">
-            {aiAccessDenied && <div className="error-banner" role="alert">{t("This account is not permitted to use AI features. Your draft and map remain available.")}</div>}
+            {aiAccessDenied && <div className="error-banner" role="alert">{t("This account is not enabled for Writing Tools AI. Contact the Writing Tools team for access. Your draft and map remain available.")}</div>}
             {error && <div className="error-banner">{error}</div>}
             {stickyDraftFocus && (
               <div className="focus-chip" role="status">
@@ -4277,14 +4270,6 @@ export default function App({ providerRuntime, initialDraft, aiAccessDenied = fa
         >
           <div className="draft-panel-header" onMouseDown={onDragStart}>
             <span className="draft-panel-title">{t("Draft")}</span>
-            {draftSource && (
-              <span className="draft-source-label">
-                {interpolateUi(
-                  t("Snapshot of {document} captured at launch. Edits here do not sync back."),
-                  { document: draftSource.documentLabel },
-                )}
-              </span>
-            )}
             <button
               className="draft-panel-btn"
               type="button"
