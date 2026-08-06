@@ -3,3 +3,5 @@ dist/
 *.log
 tsconfig.tsbuildinfo
 eval/runs/
+playwright-report*/
+test-results/
