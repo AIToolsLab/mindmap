@@ -22,11 +22,26 @@ type PlatformEnv = {
  */
 export function resolveBackendUrl(env: PlatformEnv = viteEnv ?? {}): string {
   const configured = typeof env.VITE_BACKEND_URL === "string" ? env.VITE_BACKEND_URL.trim() : "";
-  if (configured) return configured.replace(/\/+$/, "");
+  if (configured) {
+    // The bearer token and every AI request travel to this URL; production must not
+    // ship a bundle that sends them in cleartext. (Dev keeps http://localhost.)
+    if (env.PROD === true && !isHttpsUrl(configured)) {
+      throw new Error("VITE_BACKEND_URL must be an https:// URL for production builds of the mindmap.");
+    }
+    return configured.replace(/\/+$/, "");
+  }
   if (env.PROD === true) {
     throw new Error("VITE_BACKEND_URL must be set for production builds of the mindmap.");
   }
   return "http://localhost:8000/api";
+}
+
+function isHttpsUrl(value: string): boolean {
+  try {
+    return new URL(value).protocol === "https:";
+  } catch {
+    return false;
+  }
 }
 
 export function resolveOAuthClientId(env: PlatformEnv = viteEnv ?? {}): string {
@@ -112,6 +127,12 @@ function decodeJwtExpiry(accessToken: string): number | null {
   }
 }
 
+/** The token is honoured only until the earliest expiry any source reports. */
+function earliest(...expiries: Array<number | null>): number | null {
+  const known = expiries.filter((value): value is number => value !== null);
+  return known.length ? Math.min(...known) : null;
+}
+
 export function readOAuthSession(
   storage: Pick<Storage, "getItem">,
   now: number = Date.now(),
@@ -124,7 +145,7 @@ export function readOAuthSession(
     const storedExpiry = typeof parsed.expiresAt === "number" && Number.isFinite(parsed.expiresAt)
       ? parsed.expiresAt
       : null;
-    const expiry = decodeJwtExpiry(parsed.accessToken) ?? storedExpiry;
+    const expiry = earliest(decodeJwtExpiry(parsed.accessToken), storedExpiry);
     if (expiry === null || expiry <= now) return null;
     return { version: 1, accessToken: parsed.accessToken, expiresAt: expiry };
   } catch {
@@ -141,7 +162,16 @@ export function clearOAuthSession(storage: Pick<Storage, "removeItem">): void {
   storage.removeItem(OAUTH_TRANSACTION_STORAGE_KEY);
 }
 
-export function readOAuthTransaction(storage: Pick<Storage, "getItem">): OAuthTransaction | null {
+/**
+ * A login round trip takes seconds. A transaction older than this was abandoned, and
+ * its state/verifier should not be able to complete a login long after the fact.
+ */
+export const OAUTH_TRANSACTION_MAX_AGE_MS = 10 * 60 * 1000;
+
+export function readOAuthTransaction(
+  storage: Pick<Storage, "getItem">,
+  now: number = Date.now(),
+): OAuthTransaction | null {
   try {
     const parsed = JSON.parse(storage.getItem(OAUTH_TRANSACTION_STORAGE_KEY) ?? "null") as unknown;
     if (
@@ -151,7 +181,9 @@ export function readOAuthTransaction(storage: Pick<Storage, "getItem">): OAuthTr
       typeof parsed.verifier !== "string" || parsed.verifier.length < 43 ||
       typeof parsed.redirectUri !== "string" ||
       typeof parsed.resource !== "string" ||
-      typeof parsed.createdAt !== "number" || !Number.isFinite(parsed.createdAt)
+      typeof parsed.createdAt !== "number" || !Number.isFinite(parsed.createdAt) ||
+      now - parsed.createdAt > OAUTH_TRANSACTION_MAX_AGE_MS ||
+      parsed.createdAt > now + 60_000
     ) return null;
     return parsed as unknown as OAuthTransaction;
   } catch {
@@ -168,8 +200,9 @@ export function writeOAuthTransaction(
 
 export function consumeOAuthTransaction(
   storage: Pick<Storage, "getItem" | "removeItem">,
+  now: number = Date.now(),
 ): OAuthTransaction | null {
-  const transaction = readOAuthTransaction(storage);
+  const transaction = readOAuthTransaction(storage, now);
   storage.removeItem(OAUTH_TRANSACTION_STORAGE_KEY);
   return transaction;
 }
@@ -232,7 +265,9 @@ export async function createAuthorizationRequest(options: {
 
 export function oauthCallbackFromSearch(search: string): OAuthCallback | null {
   const params = new URLSearchParams(search);
-  if (!params.has("code") && !params.has("error")) return null;
+  // Any authorization parameter counts, so even a partial or forged callback (e.g.
+  // `?state=` alone) is scrubbed from the URL and rejected rather than left in place.
+  if (!["code", "state", "error", "error_description"].some((key) => params.has(key))) return null;
   return {
     ...(params.get("code") ? { code: params.get("code")! } : {}),
     ...(params.get("state") ? { state: params.get("state")! } : {}),
@@ -308,6 +343,7 @@ export async function exchangeAuthorizationCode(
   return {
     version: 1,
     accessToken: body.access_token,
-    expiresAt: tokenExpiry ?? now + expiresIn * 1000,
+    // Honour whichever lifetime is shorter: the JWT's own exp or the advertised expires_in.
+    expiresAt: earliest(tokenExpiry, now + expiresIn * 1000)!,
   };
 }

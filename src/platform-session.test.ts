@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   OAUTH_SCOPE,
   OAUTH_SESSION_STORAGE_KEY,
+  OAUTH_TRANSACTION_MAX_AGE_MS,
   OAUTH_TRANSACTION_STORAGE_KEY,
   canonicalOAuthResource,
   clearOAuthSession,
@@ -50,7 +51,7 @@ const transaction: OAuthTransaction = {
   verifier: "v".repeat(64),
   redirectUri: "https://mindmap.example/",
   resource: "https://app.example",
-  createdAt: 1,
+  createdAt: Date.now(),
 };
 
 describe("standalone OAuth session", () => {
@@ -59,6 +60,57 @@ describe("standalone OAuth session", () => {
     expect(resolveOAuthClientId({ PROD: false })).toBe("writing-tools-mindmap");
     expect(() => resolveBackendUrl({ PROD: true })).toThrow("VITE_BACKEND_URL");
     expect(() => resolveOAuthClientId({ PROD: true })).toThrow("VITE_OAUTH_CLIENT_ID");
+  });
+
+  it("refuses a non-HTTPS backend in production but allows http://localhost in dev", () => {
+    for (const url of ["http://insecure.example/api", "not a url", "ftp://app.example/api"]) {
+      expect(() => resolveBackendUrl({ PROD: true, VITE_BACKEND_URL: url }), url).toThrow("https://");
+    }
+    expect(resolveBackendUrl({ PROD: true, VITE_BACKEND_URL: "https://app.example/api/" }))
+      .toBe("https://app.example/api");
+    expect(resolveBackendUrl({ PROD: false, VITE_BACKEND_URL: "http://localhost:8000/api" }))
+      .toBe("http://localhost:8000/api");
+  });
+
+  it("rejects abandoned or future-dated login transactions", () => {
+    const storage = memoryStorage();
+    const now = 1_000_000_000;
+    const store = (createdAt: number) =>
+      storage.setItem(OAUTH_TRANSACTION_STORAGE_KEY, JSON.stringify({ ...transaction, createdAt }));
+    store(now - 60_000);
+    expect(consumeOAuthTransaction(storage, now)).not.toBeNull();
+    store(now - OAUTH_TRANSACTION_MAX_AGE_MS - 1);
+    expect(consumeOAuthTransaction(storage, now)).toBeNull();
+    expect(storage.getItem(OAUTH_TRANSACTION_STORAGE_KEY)).toBeNull();
+    store(now + 5 * 60_000);
+    expect(consumeOAuthTransaction(storage, now)).toBeNull();
+  });
+
+  it("treats any authorization parameter as callback material", () => {
+    expect(oauthCallbackFromSearch("?view=map")).toBeNull();
+    expect(oauthCallbackFromSearch("?state=s")).toEqual({ state: "s" });
+    expect(oauthCallbackFromSearch("?error_description=x")).toEqual({ errorDescription: "x" });
+  });
+
+  it("keeps the earliest expiry when the JWT and expires_in disagree", async () => {
+    const now = 1_000_000_000_000;
+    const lateJwt = jwt(Math.floor(now / 1000) + 86_400);
+    const session = await exchangeAuthorizationCode("code", transaction, {
+      fetcher: vi.fn(async () => response({
+        access_token: lateJwt,
+        token_type: "Bearer",
+        scope: OAUTH_SCOPE,
+        expires_in: 3600,
+      })) as unknown as typeof fetch,
+      backendUrl: "https://app.example/api",
+      clientId: "client",
+      now: () => now,
+    });
+    expect(session.expiresAt).toBe(now + 3_600_000);
+
+    const storage = memoryStorage();
+    writeOAuthSession(storage, { version: 1, accessToken: lateJwt, expiresAt: now + 3_600_000 });
+    expect(readOAuthSession(storage, now + 3_600_001)).toBeNull();
   });
 
   it("requires login unconditionally in production and only by opt-in in development", () => {

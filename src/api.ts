@@ -27,8 +27,17 @@ const viteEnv = (import.meta as ImportMeta & { env?: Record<string, string | und
 // applies and nothing throws.
 const BACKEND_URL = (() => {
   const configured = viteEnv?.VITE_BACKEND_URL?.trim();
-  if (configured) return configured;
-  if ((viteEnv as { PROD?: boolean } | undefined)?.PROD === true) {
+  const production = (viteEnv as { PROD?: boolean } | undefined)?.PROD === true;
+  if (configured) {
+    // Mirrors resolveBackendUrl: production never sends the bearer token over http.
+    let https = false;
+    try { https = new URL(configured).protocol === "https:"; } catch { /* invalid URL */ }
+    if (production && !https) {
+      throw new Error("VITE_BACKEND_URL must be an https:// URL for production builds of the mindmap.");
+    }
+    return configured;
+  }
+  if (production) {
     throw new Error("VITE_BACKEND_URL must be set for production builds of the mindmap.");
   }
   return "http://localhost:8000/api";
