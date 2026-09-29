@@ -2,12 +2,8 @@
  * The persisted mindmap session: its shape, its storage key, and the read/write/clear
  * operations over `localStorage`.
  *
- * Split out of `App.tsx` (item 7, slice 2). The launcher integration made the split
- * necessary rather than merely tidy: `PlatformBootstrap` has to ask "is there real
- * saved work?" *before* it mounts `App`, in order to decide between continuing a saved
- * mindmap and starting fresh from a handed-off document. Importing that predicate from
- * the component it is about to render made the boot layer depend on a 4,600-line module
- * for two lines of storage logic.
+ * Split out of `App.tsx` so bootstrap and tests can probe browser-local work without
+ * importing the full application component.
  *
  * This module owns the persisted *shape*. It deliberately does not own the migrations
  * that transform loaded data into live stores (`migrateLegacyMirrors`,
@@ -49,7 +45,6 @@ export interface ChatMsg {
   /** Missing means delivered for sessions written before optimistic-state tracking. */
   deliveryStatus?: "pending" | "delivered" | "failed";
 }
-
 export interface DraftPanelPos { x: number; y: number; }
 export interface DraftPanelSize { w: number; h: number; }
 export interface DraftSelectionFocus { text: string; }
@@ -62,15 +57,6 @@ export interface PersistedPendingMirror {
   claims: ClaimValidation[];
   decisions: Record<string, ClaimDecision>;
   editedTexts?: Record<string, string>;
-}
-
-/** Where the draft came from, when it was handed over by the launcher rather than
- *  typed here. Drives the "snapshot captured at launch" label and names the saved
- *  session on the relaunch choice screen. */
-export interface DraftSourceMetadata {
-  kind: "launch_snapshot";
-  documentLabel: string;
-  capturedAt: number;
 }
 
 export interface PersistedSession {
@@ -92,7 +78,6 @@ export interface PersistedSession {
   draftDocked?: boolean;
   draftPos: DraftPanelPos;
   draftSize: DraftPanelSize;
-  draftSource?: DraftSourceMetadata;
   lastSavedAt?: number;
   stickyDraftFocus?: DraftSelectionFocus;
   conversation?: {
@@ -113,12 +98,6 @@ export interface PersistedSession {
   bank: ReturnType<ConversationState["bank"]["getAll"]>;
   candidates: ReturnType<ConversationState["candidates"]["getAll"]>;
   map: ThoughtUnitStoreSnapshot;
-}
-
-/** What the relaunch choice screen needs to name a saved mindmap, without loading it. */
-export interface SavedMindmapSummary {
-  documentLabel: string;
-  lastSavedAt?: number;
 }
 
 const SUPPORTED_VERSIONS: ReadonlySet<number> = new Set(SUPPORTED_SESSION_VERSIONS);
@@ -167,27 +146,4 @@ export function writePersistedSession(
     return;
   }
   storage.setItem(SESSION_STORAGE_KEY, JSON.stringify(persistable));
-}
-
-/**
- * Summarize a saved session, or null when there is nothing worth offering to continue.
- *
- * The emptiness check is load-bearing, not cosmetic. `App`'s persist effect runs on
- * mount, so a session row exists the instant the app renders — without this guard every
- * relaunch after the first would present a "Continue" option pointing at an untouched
- * shell, and choosing it would silently discard the document the user just shared.
- */
-export function savedMindmapSummary(storage: Pick<Storage, "getItem">): SavedMindmapSummary | null {
-  const saved = loadPersistedSession(storage);
-  if (!saved) return null;
-  return {
-    documentLabel: saved.draftSource?.documentLabel || "Saved mindmap",
-    lastSavedAt: saved.lastSavedAt,
-  };
-}
-
-/** Discard the saved mindmap. Only ever called for an explicit "start new" choice —
- *  never on token expiry, and never from an error path. */
-export function clearSavedMindmap(storage: Pick<Storage, "removeItem">): void {
-  storage.removeItem(SESSION_STORAGE_KEY);
 }

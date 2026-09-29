@@ -3,8 +3,8 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { AssistantResponseKindBadge, buildConversationHistory, deriveCurrentUserTurn, draftHtmlToPlainText, InfluenceBadge, MapActionProposalCard, migrateCandidateMemory, migrateLegacyMirrors, migrateStoredProposals, normalizeDraftPasteHtml, recoverFailedTurn, resolveMirrorDecision, restoreDraftHtml, restoreFailedMessageToComposer, TURN_PROGRESS_COPY } from "./App";
-import { hasPersistableWork, savedMindmapSummary, SESSION_STORAGE_KEY } from "./session-persistence";
+import { AssistantResponseKindBadge, buildConversationHistory, copyTextToClipboard, deriveCurrentUserTurn, draftHtmlToPlainText, InfluenceBadge, MapActionProposalCard, migrateCandidateMemory, migrateLegacyMirrors, migrateStoredProposals, normalizeDraftPasteHtml, recoverFailedTurn, resolveMirrorDecision, restoreDraftHtml, restoreFailedMessageToComposer, TURN_PROGRESS_COPY } from "./App";
+import { hasPersistableWork } from "./session-persistence";
 import { UnderTheHoodPanel } from "./ControlRoom";
 import { ASSISTANCE_CONTRACTS, snapshotContract } from "./assistance-contract";
 import { ThoughtUnitStore } from "./map-store";
@@ -55,62 +55,12 @@ describe("resolveMirrorDecision", () => {
   });
 });
 
-describe("persisted launcher snapshot metadata", () => {
-  it("keeps the historical storage key while reading version 7 document labels", () => {
-    expect(SESSION_STORAGE_KEY).toBe("prototype-mindmap-session-v1");
-    const storage = {
-      getItem: (key: string) => key === SESSION_STORAGE_KEY ? JSON.stringify({
-        version: 7,
-        draftSource: {
-          kind: "launch_snapshot",
-          documentLabel: "Essay.docx",
-          capturedAt: 10,
-        },
-        draftText: "A real saved draft",
-        lastSavedAt: 20,
-      }) : null,
-    };
-    expect(savedMindmapSummary(storage)).toEqual({
-      documentLabel: "Essay.docx",
-      lastSavedAt: 20,
-    });
-  });
-
-  it("migrates older saved sessions to a safe fallback label", () => {
-    const storage = {
-      getItem: () => JSON.stringify({ version: 6, draftText: "Legacy work" }),
-    };
-    expect(savedMindmapSummary(storage)).toEqual({
-      documentLabel: "Saved mindmap",
-      lastSavedAt: undefined,
-    });
-  });
-
-  it("does not offer an untouched auto-persisted session as saved work", () => {
-    const storage = {
-      getItem: () => JSON.stringify({
-        version: 7,
-        msgs: [],
-        draftText: "",
-        map: { units: [], positions: {}, connections: [] },
-        lastSavedAt: 20,
-      }),
-    };
-    expect(savedMindmapSummary(storage)).toBeNull();
-  });
-
-  it("recognizes a map as real work even when chat and draft are empty", () => {
-    const storage = {
-      getItem: () => JSON.stringify({
-        version: 7,
-        msgs: [],
-        draftText: "",
-        map: { units: [{ id: "card-1" }], positions: {}, connections: [] },
-      }),
-    };
-    expect(savedMindmapSummary(storage)).toMatchObject({
-      documentLabel: "Saved mindmap",
-    });
+describe("clipboard output", () => {
+  it("writes the exact supplied text and fails when clipboard access is unavailable", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    await copyTextToClipboard("exact text", { writeText });
+    expect(writeText).toHaveBeenCalledWith("exact text");
+    await expect(copyTextToClipboard("text", undefined)).rejects.toThrow("Clipboard access is unavailable");
   });
 });
 

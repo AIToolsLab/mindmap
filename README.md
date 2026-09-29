@@ -1,110 +1,94 @@
-# Reflective Mind-Map Prototype
+# Mindmap
 
-A writing-support prototype where the AI helps a user externalize their own
-thinking into a node graph. Assistance contracts distinguish grounded reflection
-from visibly AI-suggested contribution; every chat-derived structural change is
-inert until explicit confirmation and retains its provenance.
+Mindmap is a standalone writing-support app for externalizing a draft into a
+user-controlled node graph. The AI can ask questions, reflect the writer's own
+language, and propose structure, but map changes remain inert until the writer
+confirms them.
 
-Sibling to `prototype-word-bank` (the document-insertion coach); it reuses that
-prototype's deterministic-grounding philosophy but externalizes into a mind map
-instead of a draft. Uses the repo's `backend/` OpenAI proxy for AI calls.
+The current product loop is deliberately manual:
 
-## Writing Tools launcher
+1. Copy text from Word, Google Docs, or another editor into the Draft panel.
+2. Think with the coach and shape the map.
+3. Use **Copy draft** or **Copy map** to move the result back to the editor.
 
-Production builds require a launch from the Writing Tools tool launcher by
-default. The launcher passes a short-lived `wt_grant` in the URL fragment; the
-mindmap exchanges it for a scoped bearer token and removes the grant from the
-URL. Development and test builds remain usable without a launcher token.
+The app does not read or store a remote document. Drafts, maps, and conversation
+state persist in the browser's local storage.
 
-```text
-VITE_BACKEND_URL=http://localhost:8000/api
-VITE_REQUIRE_LAUNCH=false
-```
-
-`VITE_REQUIRE_LAUNCH` enables the gate for a development or test build. When it
-is unset, the gate is enabled for production builds and disabled for development
-and tests. **Production builds always require a launch:** `VITE_REQUIRE_LAUNCH=false`
-is ignored when `PROD` is set, so a misconfigured deploy environment cannot ship an
-ungated bundle. A grant present in the URL is processed in every mode.
-
-`VITE_BACKEND_URL` is **required** for production builds and throws at startup if
-missing. Development and test builds fall back to `http://localhost:8000/api`; a
-production bundle carrying that fallback would point every user's browser at their
-own machine.
-
-The Writing Tools registry uses `VITE_MINDMAP_TOOL_URL`. Its development default
-is `http://localhost:5181/`; its production default is
-`https://mindmap.thoughtful-ai.com/`. The existing Playwright smoke suite
-continues to use Vite's development server at port 4173, so production-gate
-verification remains a separate build check.
-
-## Design principle: typed proposals with deterministic consequences
-
-- **Enforcement (code, not configurable):** a mirror must pass validation before
-  it is shown; the AI cannot commit structure (only the user confirms);
-  connections must come from user-articulated language; every committed unit
-  carries provenance back to the user's words.
-- **Factual prompt context:** Source Bank evidence ids, map/draft state, explicit
-  UI selection, Think/Map preference, and support controls.
-
-## Provider transport
-
-The established transport remains the default:
-
-```text
-VITE_MINDMAP_PROVIDER_TRANSPORT=chat_json
-```
-
-The isolated provider-tool path is enabled locally with:
-
-```text
-VITE_MINDMAP_PROVIDER_TRANSPORT=responses_tools
-VITE_MINDMAP_MODEL=gpt-5.6-terra
-VITE_MINDMAP_REASONING_EFFORT=low
-```
-
-The Responses transport exposes only `propose_reflection_v1` and
-`propose_map_action_v1`. They create reviewable typed proposals; neither tool
-confirms or applies a map mutation.
-
-## Enforcement core
-
-The pure validation and gateway modules remain independently unit tested even
-though the prototype now includes a UI and provider adapters.
-
-| Module | Role |
-| --- | --- |
-| `config.ts` | Pointer-validation thresholds, explicit UI pacing, and capability facts. |
-| `types.ts` | Domain model: source utterances, candidate thoughts, mirror claims, confirmed reflections, thought units. |
-| `normalize.ts` | Normalizer (matches `prototype-word-bank/ownership.ts`) + stopwords + light stemmer. |
-| `validator.ts` | **The 3-check mirror validator.** Content overlap, source-span grounding, unsupported-word budget. |
-| `stage1-loop.ts` | Typed model orchestration, one repair attempt, and proposal creation. |
-| `action-gateway.ts` | Sole deterministic boundary for map-changing actions. |
-
-The three validator checks, coarsest to finest:
-
-1. **Content overlap** — are the reflection's content words the user's words?
-2. **Source-span grounding** — does every claim trace to a user utterance that
-   actually supports it? (Catches new *relationships* assembled from real words.)
-3. **Unsupported words** — are stray new content words under budget? (Catches a
-   single meaning-shifting insertion like "central" that the average let through.)
-
-When any check fails the mirror is blocked and the AI must fall back to a
-clarifying question, targeted at the weakest span.
-
-## Roadmap
-
-- **M0** — enforcement core (here).
-- **M1** — minimal chat loop wired to the backend OpenAI proxy: Question →
-  Mirror (gated) → Clarify.
-- **M2** — `@xyflow/react` mind-map surface; confirmed chunks become thought
-  units with provenance; AI proposals are "pending" until confirmed.
-- **M3** — thought-unit role changes (content ⇄ sub-node), connections, direct
-  user editing with symmetric primitives.
-
-## Test
+## Local development
 
 ```sh
 npm install
-npm test
+npm run dev
 ```
+
+Development opens at `http://localhost:5181/` without a login prompt. Requests
+without a bearer token use Writing Tools' capped sessionless development path.
+To exercise the login gate locally, set `VITE_REQUIRE_LOGIN=true`; this flag is
+development-only and can never disable login in a production build.
+
+The development defaults are:
+
+- backend: `http://localhost:8000/api`
+- OAuth client: `writing-tools-mindmap`
+- callback: `http://localhost:5181/`
+- resource: `http://localhost:8000`
+
+## Production authentication
+
+Production always requires **Connect to Writing Tools**. Mindmap uses OAuth
+Authorization Code with PKCE S256 as a public client and requests only
+`openai:chat`. The PKCE transaction and 12-hour JWT are stored in session
+storage; local map work is stored separately and survives expiry, failed login,
+403 access denial, and Disconnect.
+
+The production bundle pins:
+
+- backend: `https://app.thoughtful-ai.com/api`
+- client: `writing-tools-mindmap`
+- callback: `https://mindmap.thoughtful-ai.com/`
+- resource/audience: `https://app.thoughtful-ai.com`
+
+The resource is the backend origin only—no `/api` path and no trailing slash—and
+is sent on both authorize and token requests. Browser requests use
+`credentials: "omit"`; Disconnect clears only Mindmap's local OAuth state and
+never signs the user out of Writing Tools.
+
+Before production login can work, the Writing Tools backend deployment must set:
+
+```text
+MINDMAP_OAUTH_CLIENT_ID=writing-tools-mindmap
+MINDMAP_OAUTH_REDIRECT_URIS=https://mindmap.thoughtful-ai.com/
+```
+
+Restart the backend after setting them so startup provisioning creates or
+updates the fixed client. Do not register localhost on the production server.
+
+## Verification
+
+```sh
+npm test
+npm run build
+npm run test:e2e
+npm run test:e2e:pages
+```
+
+`test:e2e` runs against the ungated development server. `test:e2e:pages` builds
+the production artifact, verifies its compiled backend/client configuration,
+and runs login, auth-failure, persistence, and clipboard smoke tests against a
+local preview with mocked OAuth endpoints.
+
+## GitHub Pages
+
+The Pages workflow builds and verifies pull requests but cannot publish them.
+A deployment can run only through a manual `workflow_dispatch` from `main`.
+The build job has read-only repository permission; Pages write and OIDC token
+permissions exist only on the deployment job.
+
+The custom domain serves the app from `/`, so Vite's base remains root. The
+artifact verifier rejects missing or non-HTTPS production configuration, an
+empty build, a bundle missing the backend URL or OAuth client ID, and any
+accidentally copied `.env` file.
+
+Rooms, automatic document handoff, and refresh tokens are intentionally outside
+this release. They can be revisited without weakening the standalone OAuth or
+browser-local persistence boundaries.

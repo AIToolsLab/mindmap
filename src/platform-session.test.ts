@@ -1,24 +1,25 @@
 import { describe, expect, it, vi } from "vitest";
 import {
-  GrantExchangeError,
-  PLATFORM_SESSION_STORAGE_KEY,
-  clearPlatformSession,
-  exchangeGrant,
-  grantFromHash,
-  hashWithoutGrant,
-  launchRequired,
-  readPlatformSession,
-  snapshotText,
-  writePlatformSession,
-  type PlatformSession,
+  OAUTH_SCOPE,
+  OAUTH_SESSION_STORAGE_KEY,
+  OAUTH_TRANSACTION_MAX_AGE_MS,
+  OAUTH_TRANSACTION_STORAGE_KEY,
+  canonicalOAuthResource,
+  clearOAuthSession,
+  consumeOAuthTransaction,
+  createAuthorizationRequest,
+  exchangeAuthorizationCode,
+  isCompactJwt,
+  loginRequired,
+  oauthCallbackFromSearch,
+  oauthRedirectUri,
+  readOAuthSession,
+  resolveBackendUrl,
+  resolveOAuthClientId,
+  scrubOAuthCallbackFromUrl,
+  writeOAuthSession,
+  type OAuthTransaction,
 } from "./platform-session";
-
-function response(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "Content-Type": "application/json" },
-  });
-}
 
 function memoryStorage(): Storage {
   const values = new Map<string, string>();
@@ -32,140 +33,197 @@ function memoryStorage(): Storage {
   };
 }
 
-describe("platform launcher session", () => {
-  it("extracts and scrubs a grant without dropping other fragment values", () => {
-    expect(grantFromHash("#view=map&wt_grant=a%20b&lang=en")).toBe("a b");
-    expect(hashWithoutGrant("#view=map&wt_grant=a%20b&lang=en")).toBe("#view=map&lang=en");
+function base64Url(value: unknown): string {
+  return Buffer.from(JSON.stringify(value)).toString("base64url");
+}
+
+function jwt(exp = Math.floor(Date.now() / 1000) + 43_200): string {
+  return `${base64Url({ alg: "EdDSA", typ: "JWT" })}.${base64Url({ exp })}.signature`;
+}
+
+function response(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+}
+
+const transaction: OAuthTransaction = {
+  version: 1,
+  state: "state",
+  verifier: "v".repeat(64),
+  redirectUri: "https://mindmap.example/",
+  resource: "https://app.example",
+  createdAt: Date.now(),
+};
+
+describe("standalone OAuth session", () => {
+  it("fails closed in production while keeping development defaults", () => {
+    expect(resolveBackendUrl({ PROD: false })).toBe("http://localhost:8000/api");
+    expect(resolveOAuthClientId({ PROD: false })).toBe("writing-tools-mindmap");
+    expect(() => resolveBackendUrl({ PROD: true })).toThrow("VITE_BACKEND_URL");
+    expect(() => resolveOAuthClientId({ PROD: true })).toThrow("VITE_OAUTH_CLIENT_ID");
   });
 
-  it("ignores malformed fragment encoding instead of throwing during boot", () => {
-    expect(() => grantFromHash("#%")).not.toThrow();
-    expect(grantFromHash("#%")).toBeNull();
-    expect(hashWithoutGrant("#%&view=map")).toBe("#%&view=map");
+  it("refuses a non-HTTPS backend in production but allows http://localhost in dev", () => {
+    for (const url of ["http://insecure.example/api", "not a url", "ftp://app.example/api"]) {
+      expect(() => resolveBackendUrl({ PROD: true, VITE_BACKEND_URL: url }), url).toThrow("https://");
+    }
+    expect(resolveBackendUrl({ PROD: true, VITE_BACKEND_URL: "https://app.example/api/" }))
+      .toBe("https://app.example/api");
+    expect(resolveBackendUrl({ PROD: false, VITE_BACKEND_URL: "http://localhost:8000/api" }))
+      .toBe("http://localhost:8000/api");
   });
 
-  it("exchanges with omitted credentials and accepts a nullable document", async () => {
+  it("rejects abandoned or future-dated login transactions", () => {
+    const storage = memoryStorage();
+    const now = 1_000_000_000;
+    const store = (createdAt: number) =>
+      storage.setItem(OAUTH_TRANSACTION_STORAGE_KEY, JSON.stringify({ ...transaction, createdAt }));
+    store(now - 60_000);
+    expect(consumeOAuthTransaction(storage, now)).not.toBeNull();
+    store(now - OAUTH_TRANSACTION_MAX_AGE_MS - 1);
+    expect(consumeOAuthTransaction(storage, now)).toBeNull();
+    expect(storage.getItem(OAUTH_TRANSACTION_STORAGE_KEY)).toBeNull();
+    store(now + 5 * 60_000);
+    expect(consumeOAuthTransaction(storage, now)).toBeNull();
+  });
+
+  it("treats any authorization parameter as callback material", () => {
+    expect(oauthCallbackFromSearch("?view=map")).toBeNull();
+    expect(oauthCallbackFromSearch("?state=s")).toEqual({ state: "s" });
+    expect(oauthCallbackFromSearch("?error_description=x")).toEqual({ errorDescription: "x" });
+  });
+
+  it("keeps the earliest expiry when the JWT and expires_in disagree", async () => {
+    const now = 1_000_000_000_000;
+    const lateJwt = jwt(Math.floor(now / 1000) + 86_400);
+    const session = await exchangeAuthorizationCode("code", transaction, {
+      fetcher: vi.fn(async () => response({
+        access_token: lateJwt,
+        token_type: "Bearer",
+        scope: OAUTH_SCOPE,
+        expires_in: 3600,
+      })) as unknown as typeof fetch,
+      backendUrl: "https://app.example/api",
+      clientId: "client",
+      now: () => now,
+    });
+    expect(session.expiresAt).toBe(now + 3_600_000);
+
+    const storage = memoryStorage();
+    writeOAuthSession(storage, { version: 1, accessToken: lateJwt, expiresAt: now + 3_600_000 });
+    expect(readOAuthSession(storage, now + 3_600_001)).toBeNull();
+  });
+
+  it("requires login unconditionally in production and only by opt-in in development", () => {
+    expect(loginRequired({ PROD: true, VITE_REQUIRE_LOGIN: "false" })).toBe(true);
+    expect(loginRequired({ PROD: false })).toBe(false);
+    expect(loginRequired({ PROD: false, VITE_REQUIRE_LOGIN: "true" })).toBe(true);
+  });
+
+  it("derives the byte-exact origin resource and callback", () => {
+    expect(canonicalOAuthResource("https://APP.Example/api/")).toBe("https://app.example");
+    expect(oauthRedirectUri({ origin: "https://mindmap.example", pathname: "/" })).toBe("https://mindmap.example/");
+  });
+
+  it("creates S256 authorization state and persists the transaction before redirect", async () => {
+    const storage = memoryStorage();
+    const request = await createAuthorizationRequest({
+      storage,
+      location: { origin: "https://mindmap.example", pathname: "/" },
+      backendUrl: "https://app.example/api",
+      clientId: "writing-tools-mindmap",
+      now: () => 10,
+    });
+    const url = new URL(request.url);
+    expect(url.pathname).toBe("/api/auth/oauth2/authorize");
+    expect(url.searchParams.get("client_id")).toBe("writing-tools-mindmap");
+    expect(url.searchParams.get("redirect_uri")).toBe("https://mindmap.example/");
+    expect(url.searchParams.get("scope")).toBe(OAUTH_SCOPE);
+    expect(url.searchParams.get("resource")).toBe("https://app.example");
+    expect(url.searchParams.get("code_challenge_method")).toBe("S256");
+    expect(url.searchParams.get("state")).toBe(request.transaction.state);
+    expect(JSON.parse(storage.getItem(OAUTH_TRANSACTION_STORAGE_KEY)!)).toEqual(request.transaction);
+  });
+
+  it("captures and scrubs callback material while preserving unrelated query and hash values", () => {
+    expect(oauthCallbackFromSearch("?view=map&code=c&state=s")).toEqual({ code: "c", state: "s" });
+    const replaceState = vi.fn();
+    scrubOAuthCallbackFromUrl(
+      { pathname: "/", search: "?view=map&code=c&state=s&error_description=no", hash: "#draft" },
+      { state: { keep: true }, replaceState },
+    );
+    expect(replaceState).toHaveBeenCalledWith({ keep: true }, "", "/?view=map#draft");
+  });
+
+  it("consumes authorization state exactly once", () => {
+    const storage = memoryStorage();
+    storage.setItem(OAUTH_TRANSACTION_STORAGE_KEY, JSON.stringify(transaction));
+    expect(consumeOAuthTransaction(storage)).toEqual(transaction);
+    expect(consumeOAuthTransaction(storage)).toBeNull();
+  });
+
+  it("accepts only unexpired compact JWT sessions and clears OAuth state without local work", () => {
+    const storage = memoryStorage();
+    const session = { version: 1 as const, accessToken: jwt(200), expiresAt: 200_000 };
+    writeOAuthSession(storage, session);
+    expect(readOAuthSession(storage, 100_000)).toEqual(session);
+    expect(readOAuthSession(storage, 201_000)).toBeNull();
+    expect(isCompactJwt("not-a-token")).toBe(false);
+    storage.setItem(OAUTH_TRANSACTION_STORAGE_KEY, JSON.stringify(transaction));
+    clearOAuthSession(storage);
+    expect(storage.getItem(OAUTH_SESSION_STORAGE_KEY)).toBeNull();
+    expect(storage.getItem(OAUTH_TRANSACTION_STORAGE_KEY)).toBeNull();
+  });
+
+  it("exchanges with omitted credentials and repeats the exact resource", async () => {
     const fetcher = vi.fn().mockResolvedValue(response({
-      access_token: "wtk_token",
-      expires_in: 3600,
-      client_id: "mindmap",
-      scopes: ["openai:chat", "doc:read"],
-      doc: null,
+      access_token: jwt(44_000),
+      token_type: "Bearer",
+      scope: OAUTH_SCOPE,
+      expires_in: 43_200,
     }));
-    const session = await exchangeGrant("wtg_grant", {
+    const session = await exchangeAuthorizationCode("code", transaction, {
       fetcher,
       backendUrl: "https://app.example/api",
-      now: () => 1000,
+      clientId: "writing-tools-mindmap",
+      now: () => 1_000,
     });
-
-    expect(fetcher).toHaveBeenCalledWith(
-      "https://app.example/api/handoff/exchange",
-      expect.objectContaining({
-        method: "POST",
-        credentials: "omit",
-        body: JSON.stringify({ grant_id: "wtg_grant" }),
-      }),
-    );
-    expect(session).toMatchObject({ accessToken: "wtk_token", expiresAt: 3_601_000, doc: null });
+    expect(session.accessToken).toContain(".");
+    const [, init] = fetcher.mock.calls[0]!;
+    expect(init).toMatchObject({ method: "POST", credentials: "omit" });
+    const form = init.body as URLSearchParams;
+    expect(form.get("resource")).toBe("https://app.example");
+    expect(form.get("redirect_uri")).toBe("https://mindmap.example/");
+    expect(form.get("code_verifier")).toBe(transaction.verifier);
   });
 
-  it("requires AI scope but treats document scope as optional and ignores an ungranted document", async () => {
-    const session = await exchangeGrant("wtg_grant", {
-      fetcher: vi.fn().mockResolvedValue(response({
-        access_token: "wtk_token",
-        expires_in: 60,
-        client_id: "mindmap",
-        scopes: ["openai:chat"],
-        doc: { beforeCursor: "private", selectedText: "", afterCursor: "" },
-      })),
-      now: () => 0,
-    });
-    expect(session.doc).toBeNull();
-
-    await expect(exchangeGrant("wtg_grant", {
-      fetcher: vi.fn().mockResolvedValue(response({
-        access_token: "wtk_token",
-        expires_in: 60,
-        client_id: "mindmap",
-        scopes: ["doc:read"],
-        doc: null,
-      })),
+  it.each([
+    { token_type: "bearer", scope: OAUTH_SCOPE, expires_in: 43_200, access_token: jwt() },
+    { token_type: "Bearer", scope: "doc:read", expires_in: 43_200, access_token: jwt() },
+    { token_type: "Bearer", scope: OAUTH_SCOPE, expires_in: 86_401, access_token: jwt() },
+    { token_type: "Bearer", scope: OAUTH_SCOPE, expires_in: 0, access_token: jwt() },
+    { token_type: "Bearer", scope: OAUTH_SCOPE, expires_in: 43_200, access_token: "opaque" },
+  ])("rejects a token response outside the Track A contract", async (body) => {
+    await expect(exchangeAuthorizationCode("code", transaction, {
+      fetcher: vi.fn().mockResolvedValue(response(body)),
     })).rejects.toMatchObject({ code: "invalid" });
   });
 
-  it("accepts a missing document field as an empty optional snapshot", async () => {
-    const session = await exchangeGrant("wtg_grant", {
+  it("accepts a shorter server-selected access-token lifetime", async () => {
+    const accessToken = jwt(3_700);
+    await expect(exchangeAuthorizationCode("code", transaction, {
       fetcher: vi.fn().mockResolvedValue(response({
-        access_token: "wtk_token",
-        expires_in: 60,
-        client_id: "mindmap",
-        scopes: ["openai:chat", "doc:read"],
+        token_type: "Bearer", scope: OAUTH_SCOPE, expires_in: 3_600, access_token: accessToken,
       })),
-    });
-    expect(session.doc).toBeNull();
+      now: () => 100_000,
+    })).resolves.toMatchObject({ accessToken });
   });
 
-  it("validates and concatenates a granted document while dropping contextData", async () => {
-    const session = await exchangeGrant("wtg_grant", {
+  it("rejects a correctly shaped token that is already expired", async () => {
+    await expect(exchangeAuthorizationCode("code", transaction, {
       fetcher: vi.fn().mockResolvedValue(response({
-        access_token: "wtk_token",
-        expires_in: 60,
-        client_id: "mindmap",
-        scopes: ["openai:chat", "doc:read"],
-        doc: {
-          documentLabel: "Essay.docx",
-          beforeCursor: "before ",
-          selectedText: "selected",
-          afterCursor: " after",
-          contextData: [{ title: "private", content: "ignored" }],
-        },
+        token_type: "Bearer", scope: OAUTH_SCOPE, expires_in: 43_200, access_token: jwt(1),
       })),
-      now: () => 0,
-    });
-    expect(snapshotText(session.doc)).toBe("before selected after");
-    expect(session.doc).not.toHaveProperty("contextData");
-  });
-
-  it("keeps an expired-by-browser-clock token as a server-authoritative expiry hint", () => {
-    const storage = memoryStorage();
-    const session: PlatformSession = {
-      version: 1,
-      accessToken: "wtk_token",
-      expiresAt: 1,
-      scopes: ["openai:chat"],
-      doc: null,
-      capturedAt: 0,
-    };
-    writePlatformSession(storage, session);
-    expect(readPlatformSession(storage)).toEqual(session);
-    clearPlatformSession(storage);
-    expect(storage.getItem(PLATFORM_SESSION_STORAGE_KEY)).toBeNull();
-  });
-
-  it("maps expired and already-used grants to distinct errors", async () => {
-    for (const code of ["expired", "already_used"] as const) {
-      try {
-        await exchangeGrant("wtg_grant", {
-          fetcher: vi.fn().mockResolvedValue(response({ detail: "No.", error: code }, 400)),
-        });
-        throw new Error("expected exchange to fail");
-      } catch (error) {
-        expect(error).toBeInstanceOf(GrantExchangeError);
-        expect((error as GrantExchangeError).code).toBe(code);
-      }
-    }
-  });
-
-  it("defaults launch enforcement by build mode and honors explicit overrides", () => {
-    expect(launchRequired({ PROD: true })).toBe(true);
-    expect(launchRequired({ PROD: false })).toBe(false);
-    expect(launchRequired({ PROD: false, VITE_REQUIRE_LAUNCH: "true" })).toBe(true);
-  });
-
-  it("ignores VITE_REQUIRE_LAUNCH=false in production builds", () => {
-    // Fail closed: a misconfigured deploy env must not be able to ship an ungated
-    // production bundle. The override stays available for dev and Playwright.
-    expect(launchRequired({ PROD: true, VITE_REQUIRE_LAUNCH: "false" })).toBe(true);
-    expect(launchRequired({ PROD: false, VITE_REQUIRE_LAUNCH: "false" })).toBe(false);
+      now: () => 2_000,
+    })).rejects.toMatchObject({ code: "invalid" });
   });
 });

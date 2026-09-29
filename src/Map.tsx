@@ -183,6 +183,7 @@ interface ThoughtMapProps {
   onRequireConnectionLabelChange: (value: boolean) => void;
   canUndo: boolean;
   onUndo: () => void;
+  onCopyMap: () => void;
   onClearDraft: () => void;
   onClearMap: () => void;
   onContextCardToggle?: (id: string) => void;
@@ -845,6 +846,7 @@ function ThoughtMapInner({
   onRequireConnectionLabelChange,
   canUndo,
   onUndo,
+  onCopyMap,
   onClearDraft,
   onClearMap,
   onContextCardToggle,
@@ -1707,6 +1709,9 @@ function ThoughtMapInner({
 
         <div className="map-left-tools">
           {draftDockSlot ?? draftDock}
+          <button type="button" className="map-copy" onClick={onCopyMap}>
+            {t("Copy map")}
+          </button>
           <button type="button" disabled={readOnly} className="map-clear-draft" onClick={onClearDraft} title={readOnly ? readOnlyTitle : t("Clear the draft only")} aria-describedby={readOnly ? "reader-view-status" : undefined}>
             {t("Clear draft")}
           </button>

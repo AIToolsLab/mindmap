@@ -66,14 +66,24 @@ On the connect action:
    `redirect_uri`, `response_type=code`, `scope=openai:chat`,
    `code_challenge` (S256), `state`, **and `resource`**
 
-`resource` is the **canonical backend origin** (RFC 8707) — the origin of
-`VITE_BACKEND_URL`, not the full URL including `/api`. It must be sent on
-**both** the authorize request and the token exchange, and it must match what
-Track A validates as the token audience. Omit it and every token fails audience
-validation with an opaque 401. This is a hard contract with Track A; if the two
-sides disagree about canonicalization (trailing slash, path, case), nothing
-works — confirm the exact string against Track A's implementation rather than
-deriving it independently.
+`resource` is the **canonical backend origin** (RFC 8707). Track A is
+implemented and tested, so this is no longer a guess:
+
+```ts
+const resource = new URL(PLATFORM_BACKEND_URL).origin;
+// VITE_BACKEND_URL = https://app.thoughtful-ai.com/api
+//            resource = https://app.thoughtful-ai.com     ← origin only
+```
+
+**No path. No trailing slash.** Track A rejects both a missing `resource` and a
+trailing-slash variant with `400 invalid_target`, and has tests pinning exactly
+that. Send it on the authorize request **and** as a form field in the token
+POST body — Track A validates it in both places.
+
+Two reasons this is not optional: Better Auth 1.6.22 issues an **opaque** token
+when `resource` is absent, which the resource server cannot verify at all; and
+the audience check then fails even if it could. If you ever see
+`400 invalid_target`, this is why.
 
 On callback:
 
@@ -103,6 +113,42 @@ match what Track A registers exactly.
   behavioural requirement in this spec.
 - Accept only a plausible token shape when reading from storage (compact JWT:
   three base64url segments). Do not accept "any string over N characters."
+
+### 3b. Distinguish 401 from 403 — and do not loop
+
+Track A returns two different failures at the proxy, and they need opposite
+handling:
+
+| Status | Meaning | What Mindmap must do |
+|---|---|---|
+| **401** | token invalid, expired, or absent | clear the token, offer *Connect* |
+| **403** | token **valid**, account not on the beta allowlist | say so, and **do not offer login again** |
+
+**The failure to avoid:** a non-allowlisted user signs in perfectly, receives a
+real 12-hour token, and then every AI call returns 403. If any auth failure is
+treated as "log in again," they loop forever — succeeding at login, failing at
+the proxy, being sent back to login. Signing in again cannot fix a 403; only an
+allowlist change can.
+
+Show a terminal message for 403: their account isn't enabled for Writing Tools
+AI, and who to contact. Keep their map work on screen.
+
+Both responses carry `X-Writing-Tools-Error: platform-auth`, and Track A
+explicitly exposes that header to cross-origin JS (`exposeHeaders` on its CORS
+config). Use it to tell a *platform* auth failure apart from an upstream model
+error — do not infer it from the status code alone.
+
+### 3c. Logout means clearing local state — nothing more
+
+Clear the stored token and return to the connect screen.
+
+**Do not call `/api/auth/sign-out`.** That would end the user's Writing Tools
+browser session, which is shared with the add-in and anything else they have
+open. Mindmap logging out must not sign someone out of Writing Tools.
+
+Send `credentials: 'omit'` on every backend request. Mindmap authenticates with
+a bearer token and must never rely on, or transmit, Writing Tools cookies —
+that isolation is the whole point of the redirect flow.
 
 ### 4. Delete the old path
 
@@ -163,6 +209,11 @@ path that no longer exists.** Rewrite all of them:
 - callback params are scrubbed from the URL, including on failure
 - the bearer is attached to subsequent AI calls
 - local map work survives a token clear
+- the authorize request and the token POST both carry
+  `resource=<origin only, no trailing slash>`
+- **a 403 does not send the user back to login** — this is the loop, and a test
+  is the only thing that will keep it fixed
+- a 401 clears the token and offers *Connect*
 
 The skipped `wt_api` test is obsolete — delete it.
 

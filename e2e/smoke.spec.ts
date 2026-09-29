@@ -41,44 +41,24 @@ test("a chat-derived card remains off the map until confirm", async ({ page }) =
   await expect(page.locator("textarea.map-card-editor")).toHaveValue("human control");
 });
 
-test("a launcher grant hydrates a labelled snapshot and authenticates the provider call", async ({ page }) => {
-  await page.route("**/handoff/exchange", async (route) => {
-    expect(route.request().postDataJSON()).toEqual({ grant_id: "grant-local" });
-    await route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify({
-        access_token: "wtk_local",
-        expires_in: 3600,
-        client_id: "mindmap",
-        scopes: ["openai:chat", "doc:read"],
-        doc: {
-          documentLabel: "Launcher Essay.docx",
-          beforeCursor: "First ",
-          selectedText: "selected",
-          afterCursor: " paragraph.",
-        },
-      }),
-    });
-  });
+test("development opens directly and uses the sessionless provider path", async ({ page }) => {
   await page.route("**/openai/chat/completions", async (route) => {
-    expect(route.request().headers().authorization).toBe("Bearer wtk_local");
+    expect(route.request().headers().authorization).toBeUndefined();
+    expect(route.request().headers().cookie).toBeUndefined();
     await route.fulfill({
       contentType: "application/json",
       body: JSON.stringify(envelope({
-        response: { kind: "question", text: "What matters in this snapshot?", stance: "deepen" },
+        response: { kind: "question", text: "What matters in this draft?", stance: "deepen" },
       })),
     });
   });
 
-  await page.goto("/#wt_grant=grant-local");
-  await expect(page.getByText(/Snapshot of Launcher Essay\.docx captured at launch/)).toBeVisible();
-  await expect(page.locator(".draft-editor")).toContainText("First selected paragraph.");
-  await expect.poll(() => new URL(page.url()).hash).toBe("");
-
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Connect to Writing Tools" })).toHaveCount(0);
   const composer = page.locator("textarea.composer-textarea");
-  await composer.fill("Help me think about this.");
+  await composer.fill("Help me think about this draft.");
   await composer.press("Enter");
-  await expect(page.getByText("What matters in this snapshot?")).toBeVisible();
+  await expect(page.getByText("What matters in this draft?")).toBeVisible();
 });
 
 test("reader-language switching keeps populated cards mounted throughout translation", async ({ page }) => {

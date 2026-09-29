@@ -1,58 +1,105 @@
 /// <reference types="vite/client" />
 
-export const PLATFORM_SESSION_STORAGE_KEY = "prototype-mindmap-platform-session-v1";
-export const PLATFORM_SESSION_VERSION = 1;
+export const OAUTH_SESSION_STORAGE_KEY = "prototype-mindmap-oauth-session-v1";
+export const OAUTH_TRANSACTION_STORAGE_KEY = "prototype-mindmap-oauth-transaction-v1";
+export const OAUTH_SESSION_VERSION = 1;
+export const OAUTH_CLIENT_ID_DEFAULT = "writing-tools-mindmap";
+export const OAUTH_SCOPE = "openai:chat";
 
 const viteEnv = (import.meta as ImportMeta & { env?: Record<string, string | boolean | undefined> }).env;
+
+type PlatformEnv = {
+  PROD?: boolean;
+  VITE_BACKEND_URL?: string | boolean;
+  VITE_OAUTH_CLIENT_ID?: string | boolean;
+  VITE_REQUIRE_LOGIN?: string | boolean;
+};
 
 /**
  * A production bundle that quietly falls back to localhost points every user's browser
  * at their own machine — a confusing per-request failure rather than an obvious one.
  * Fail at module load so a misconfigured deploy is caught by the first smoke check.
  */
-export function resolveBackendUrl(
-  env: { PROD?: boolean; VITE_BACKEND_URL?: string | boolean } = viteEnv ?? {},
-): string {
-  const configured = typeof env?.VITE_BACKEND_URL === "string" ? env.VITE_BACKEND_URL.trim() : "";
-  if (configured) return configured;
-  if (env?.PROD === true) {
+export function resolveBackendUrl(env: PlatformEnv = viteEnv ?? {}): string {
+  const configured = typeof env.VITE_BACKEND_URL === "string" ? env.VITE_BACKEND_URL.trim() : "";
+  if (configured) {
+    // The bearer token and every AI request travel to this URL; production must not
+    // ship a bundle that sends them in cleartext. (Dev keeps http://localhost.)
+    if (env.PROD === true && !isHttpsUrl(configured)) {
+      throw new Error("VITE_BACKEND_URL must be an https:// URL for production builds of the mindmap.");
+    }
+    return configured.replace(/\/+$/, "");
+  }
+  if (env.PROD === true) {
     throw new Error("VITE_BACKEND_URL must be set for production builds of the mindmap.");
   }
   return "http://localhost:8000/api";
 }
 
-export const PLATFORM_BACKEND_URL = resolveBackendUrl();
-
-export interface PlatformDocContext {
-  documentLabel?: string;
-  beforeCursor: string;
-  selectedText: string;
-  afterCursor: string;
-  contextData?: unknown;
+function isHttpsUrl(value: string): boolean {
+  try {
+    return new URL(value).protocol === "https:";
+  } catch {
+    return false;
+  }
 }
 
-export type LaunchDecision = "continue_saved" | "start_new";
+export function resolveOAuthClientId(env: PlatformEnv = viteEnv ?? {}): string {
+  const configured = typeof env.VITE_OAUTH_CLIENT_ID === "string"
+    ? env.VITE_OAUTH_CLIENT_ID.trim()
+    : "";
+  if (configured) return configured;
+  if (env.PROD === true) {
+    throw new Error("VITE_OAUTH_CLIENT_ID must be set for production builds of the mindmap.");
+  }
+  return OAUTH_CLIENT_ID_DEFAULT;
+}
 
-export interface PlatformSession {
+export function canonicalOAuthResource(backendUrl: string): string {
+  return new URL(backendUrl).origin;
+}
+
+export const PLATFORM_BACKEND_URL = resolveBackendUrl();
+export const OAUTH_CLIENT_ID = resolveOAuthClientId();
+export const OAUTH_RESOURCE = canonicalOAuthResource(PLATFORM_BACKEND_URL);
+
+export function loginRequired(env: PlatformEnv = viteEnv ?? {}): boolean {
+  // Production always requires login, and `VITE_REQUIRE_LOGIN=false` cannot turn
+  // that off. The override exists only for dev servers and Playwright; honouring it
+  // in a PROD build would let one stray env var ship an ungated bundle, with nothing
+  // at runtime to signal that the gate was disabled.
+  if (env.PROD === true) return true;
+  return env.VITE_REQUIRE_LOGIN === "true";
+}
+
+export interface OAuthSession {
   version: 1;
   accessToken: string;
   expiresAt: number;
-  scopes: string[];
-  doc: PlatformDocContext | null;
-  capturedAt: number;
-  decision?: LaunchDecision;
 }
 
-export type GrantExchangeErrorCode =
-  | "expired"
-  | "already_used"
-  | "invalid"
-  | "network";
+export interface OAuthTransaction {
+  version: 1;
+  state: string;
+  verifier: string;
+  redirectUri: string;
+  resource: string;
+  createdAt: number;
+}
 
-export class GrantExchangeError extends Error {
-  constructor(readonly code: GrantExchangeErrorCode, message: string) {
+export interface OAuthCallback {
+  code?: string;
+  state?: string;
+  error?: string;
+  errorDescription?: string;
+}
+
+export type OAuthFlowErrorCode = "invalid" | "denied" | "network";
+
+export class OAuthFlowError extends Error {
+  constructor(readonly code: OAuthFlowErrorCode, message: string) {
     super(message);
-    this.name = "GrantExchangeError";
+    this.name = "OAuthFlowError";
   }
 }
 
@@ -60,195 +107,243 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-export function validDocContext(value: unknown): PlatformDocContext | null {
-  if (!isRecord(value)) return null;
-  if (
-    typeof value.beforeCursor !== "string" ||
-    typeof value.selectedText !== "string" ||
-    typeof value.afterCursor !== "string"
-  ) return null;
-  if (value.documentLabel !== undefined && typeof value.documentLabel !== "string") return null;
-  return {
-    beforeCursor: value.beforeCursor,
-    selectedText: value.selectedText,
-    afterCursor: value.afterCursor,
-    ...(typeof value.documentLabel === "string" ? { documentLabel: value.documentLabel } : {}),
-  };
+export function isCompactJwt(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  const segments = value.split(".");
+  return segments.length === 3 && segments.every((segment) => /^[A-Za-z0-9_-]+$/.test(segment));
 }
 
-export function snapshotText(doc: PlatformDocContext | null): string {
-  return doc ? `${doc.beforeCursor}${doc.selectedText}${doc.afterCursor}` : "";
-}
-
-export function grantFromHash(hash: string): string | null {
-  const parts = hash.replace(/^#/, "").split("&");
-  for (const part of parts) {
-    const [rawKey, ...rawValue] = part.split("=");
-    let key: string;
-    let value: string;
-    try {
-      key = decodeURIComponent(rawKey || "");
-      value = decodeURIComponent(rawValue.join("="));
-    } catch {
-      continue;
-    }
-    if (key !== "wt_grant") continue;
-    return value || null;
-  }
-  return null;
-}
-
-export function hashWithoutGrant(hash: string): string {
-  const kept = hash
-    .replace(/^#/, "")
-    .split("&")
-    .filter((part) => {
-      try {
-        return decodeURIComponent(part.split("=")[0] || "") !== "wt_grant";
-      } catch {
-        return true;
-      }
-    })
-    .filter(Boolean);
-  return kept.length ? `#${kept.join("&")}` : "";
-}
-
-export function scrubGrantFromUrl(
-  location: Pick<Location, "pathname" | "search" | "hash">,
-  history: Pick<History, "replaceState" | "state">,
-): void {
-  history.replaceState(
-    history.state,
-    "",
-    `${location.pathname}${location.search}${hashWithoutGrant(location.hash)}`,
-  );
-}
-
-export function launchRequired(
-  env: { PROD?: boolean; VITE_REQUIRE_LAUNCH?: string | boolean } = viteEnv ?? {},
-): boolean {
-  // Production always requires a launch, and `VITE_REQUIRE_LAUNCH=false` cannot turn
-  // that off. The override exists for dev servers and Playwright; honouring it in a
-  // PROD build would let one stray env var ship an ungated bundle, with nothing at
-  // runtime to signal that the gate was disabled.
-  if (env?.PROD === true) return true;
-  return env?.VITE_REQUIRE_LAUNCH === "true";
-}
-
-export function readPlatformSession(storage: Pick<Storage, "getItem">): PlatformSession | null {
+function decodeJwtExpiry(accessToken: string): number | null {
   try {
-    const parsed = JSON.parse(storage.getItem(PLATFORM_SESSION_STORAGE_KEY) ?? "null") as unknown;
-    if (!isRecord(parsed)) return null;
-    if (
-      parsed.version !== PLATFORM_SESSION_VERSION ||
-      typeof parsed.accessToken !== "string" ||
-      !parsed.accessToken.startsWith("wtk_") ||
-      typeof parsed.expiresAt !== "number" ||
-      !Number.isFinite(parsed.expiresAt) ||
-      typeof parsed.capturedAt !== "number" ||
-      !Number.isFinite(parsed.capturedAt) ||
-      !Array.isArray(parsed.scopes) ||
-      !parsed.scopes.every((scope) => typeof scope === "string") ||
-      !parsed.scopes.includes("openai:chat")
-    ) return null;
-    const hasDocRead = parsed.scopes.includes("doc:read");
-    const doc = hasDocRead && parsed.doc !== null ? validDocContext(parsed.doc) : null;
-    if (hasDocRead && parsed.doc !== null && !doc) return null;
-    const decision =
-      parsed.decision === "continue_saved" || parsed.decision === "start_new"
-        ? parsed.decision
-        : undefined;
-    return {
-      version: 1,
-      accessToken: parsed.accessToken,
-      expiresAt: parsed.expiresAt,
-      capturedAt: parsed.capturedAt,
-      scopes: parsed.scopes as string[],
-      doc,
-      ...(decision ? { decision } : {}),
-    };
+    const payload = accessToken.split(".")[1];
+    if (!payload) return null;
+    const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+    const parsed = JSON.parse(atob(padded)) as unknown;
+    if (!isRecord(parsed) || typeof parsed.exp !== "number" || !Number.isFinite(parsed.exp)) return null;
+    return parsed.exp * 1000;
   } catch {
     return null;
   }
 }
 
-export function writePlatformSession(
+/** The token is honoured only until the earliest expiry any source reports. */
+function earliest(...expiries: Array<number | null>): number | null {
+  const known = expiries.filter((value): value is number => value !== null);
+  return known.length ? Math.min(...known) : null;
+}
+
+export function readOAuthSession(
+  storage: Pick<Storage, "getItem">,
+  now: number = Date.now(),
+): OAuthSession | null {
+  try {
+    const parsed = JSON.parse(storage.getItem(OAUTH_SESSION_STORAGE_KEY) ?? "null") as unknown;
+    if (!isRecord(parsed) || parsed.version !== OAUTH_SESSION_VERSION || !isCompactJwt(parsed.accessToken)) {
+      return null;
+    }
+    const storedExpiry = typeof parsed.expiresAt === "number" && Number.isFinite(parsed.expiresAt)
+      ? parsed.expiresAt
+      : null;
+    const expiry = earliest(decodeJwtExpiry(parsed.accessToken), storedExpiry);
+    if (expiry === null || expiry <= now) return null;
+    return { version: 1, accessToken: parsed.accessToken, expiresAt: expiry };
+  } catch {
+    return null;
+  }
+}
+
+export function writeOAuthSession(storage: Pick<Storage, "setItem">, session: OAuthSession): void {
+  storage.setItem(OAUTH_SESSION_STORAGE_KEY, JSON.stringify(session));
+}
+
+export function clearOAuthSession(storage: Pick<Storage, "removeItem">): void {
+  storage.removeItem(OAUTH_SESSION_STORAGE_KEY);
+  storage.removeItem(OAUTH_TRANSACTION_STORAGE_KEY);
+}
+
+/**
+ * A login round trip takes seconds. A transaction older than this was abandoned, and
+ * its state/verifier should not be able to complete a login long after the fact.
+ */
+export const OAUTH_TRANSACTION_MAX_AGE_MS = 10 * 60 * 1000;
+
+export function readOAuthTransaction(
+  storage: Pick<Storage, "getItem">,
+  now: number = Date.now(),
+): OAuthTransaction | null {
+  try {
+    const parsed = JSON.parse(storage.getItem(OAUTH_TRANSACTION_STORAGE_KEY) ?? "null") as unknown;
+    if (
+      !isRecord(parsed) ||
+      parsed.version !== 1 ||
+      typeof parsed.state !== "string" || !parsed.state ||
+      typeof parsed.verifier !== "string" || parsed.verifier.length < 43 ||
+      typeof parsed.redirectUri !== "string" ||
+      typeof parsed.resource !== "string" ||
+      typeof parsed.createdAt !== "number" || !Number.isFinite(parsed.createdAt) ||
+      now - parsed.createdAt > OAUTH_TRANSACTION_MAX_AGE_MS ||
+      parsed.createdAt > now + 60_000
+    ) return null;
+    return parsed as unknown as OAuthTransaction;
+  } catch {
+    return null;
+  }
+}
+
+export function writeOAuthTransaction(
   storage: Pick<Storage, "setItem">,
-  session: PlatformSession,
+  transaction: OAuthTransaction,
 ): void {
-  storage.setItem(PLATFORM_SESSION_STORAGE_KEY, JSON.stringify(session));
+  storage.setItem(OAUTH_TRANSACTION_STORAGE_KEY, JSON.stringify(transaction));
 }
 
-export function clearPlatformSession(storage: Pick<Storage, "removeItem">): void {
-  storage.removeItem(PLATFORM_SESSION_STORAGE_KEY);
+export function consumeOAuthTransaction(
+  storage: Pick<Storage, "getItem" | "removeItem">,
+  now: number = Date.now(),
+): OAuthTransaction | null {
+  const transaction = readOAuthTransaction(storage, now);
+  storage.removeItem(OAUTH_TRANSACTION_STORAGE_KEY);
+  return transaction;
 }
 
-export async function exchangeGrant(
-  grantId: string,
+function randomBase64Url(bytes: number, cryptoImpl: Crypto): string {
+  const values = new Uint8Array(bytes);
+  cryptoImpl.getRandomValues(values);
+  let binary = "";
+  values.forEach((value) => { binary += String.fromCharCode(value); });
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function bytesToBase64Url(values: Uint8Array): string {
+  let binary = "";
+  values.forEach((value) => { binary += String.fromCharCode(value); });
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+export function oauthRedirectUri(location: Pick<Location, "origin" | "pathname">): string {
+  return `${location.origin}${location.pathname}`;
+}
+
+export async function createAuthorizationRequest(options: {
+  storage: Pick<Storage, "setItem">;
+  location: Pick<Location, "origin" | "pathname">;
+  cryptoImpl?: Crypto;
+  backendUrl?: string;
+  clientId?: string;
+  now?: () => number;
+}): Promise<{ url: string; transaction: OAuthTransaction }> {
+  const cryptoImpl = options.cryptoImpl ?? crypto;
+  const backendUrl = options.backendUrl ?? PLATFORM_BACKEND_URL;
+  const resource = canonicalOAuthResource(backendUrl);
+  const verifier = randomBase64Url(48, cryptoImpl);
+  const state = randomBase64Url(32, cryptoImpl);
+  const digest = await cryptoImpl.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
+  const redirectUri = oauthRedirectUri(options.location);
+  const transaction: OAuthTransaction = {
+    version: 1,
+    state,
+    verifier,
+    redirectUri,
+    resource,
+    createdAt: (options.now ?? Date.now)(),
+  };
+  writeOAuthTransaction(options.storage, transaction);
+  const url = new URL(`${backendUrl}/auth/oauth2/authorize`);
+  url.search = new URLSearchParams({
+    client_id: options.clientId ?? OAUTH_CLIENT_ID,
+    redirect_uri: redirectUri,
+    response_type: "code",
+    scope: OAUTH_SCOPE,
+    code_challenge: bytesToBase64Url(new Uint8Array(digest)),
+    code_challenge_method: "S256",
+    state,
+    resource,
+  }).toString();
+  return { url: url.toString(), transaction };
+}
+
+export function oauthCallbackFromSearch(search: string): OAuthCallback | null {
+  const params = new URLSearchParams(search);
+  // Any authorization parameter counts, so even a partial or forged callback (e.g.
+  // `?state=` alone) is scrubbed from the URL and rejected rather than left in place.
+  if (!["code", "state", "error", "error_description"].some((key) => params.has(key))) return null;
+  return {
+    ...(params.get("code") ? { code: params.get("code")! } : {}),
+    ...(params.get("state") ? { state: params.get("state")! } : {}),
+    ...(params.get("error") ? { error: params.get("error")! } : {}),
+    ...(params.get("error_description") ? { errorDescription: params.get("error_description")! } : {}),
+  };
+}
+
+export function scrubOAuthCallbackFromUrl(
+  location: Pick<Location, "pathname" | "search" | "hash">,
+  history: Pick<History, "replaceState" | "state">,
+): void {
+  const params = new URLSearchParams(location.search);
+  for (const key of ["code", "state", "error", "error_description"]) params.delete(key);
+  const search = params.toString();
+  history.replaceState(history.state, "", `${location.pathname}${search ? `?${search}` : ""}${location.hash}`);
+}
+
+export async function exchangeAuthorizationCode(
+  code: string,
+  transaction: OAuthTransaction,
   options: {
     fetcher?: typeof fetch;
     backendUrl?: string;
+    clientId?: string;
     now?: () => number;
   } = {},
-): Promise<PlatformSession> {
-  const fetcher = options.fetcher ?? fetch;
+): Promise<OAuthSession> {
   let response: Response;
   try {
-    response = await fetcher(
-      `${options.backendUrl ?? PLATFORM_BACKEND_URL}/handoff/exchange`,
+    response = await (options.fetcher ?? fetch)(
+      `${options.backendUrl ?? PLATFORM_BACKEND_URL}/auth/oauth2/token`,
       {
         method: "POST",
         credentials: "omit",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ grant_id: grantId }),
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          grant_type: "authorization_code",
+          client_id: options.clientId ?? OAUTH_CLIENT_ID,
+          redirect_uri: transaction.redirectUri,
+          code,
+          code_verifier: transaction.verifier,
+          resource: transaction.resource,
+        }),
       },
     );
   } catch (error) {
-    throw new GrantExchangeError(
-      "network",
-      error instanceof Error ? error.message : "Could not reach Writing Tools.",
-    );
+    throw new OAuthFlowError("network", error instanceof Error ? error.message : "Could not reach Writing Tools.");
   }
-
   const body = await response.json().catch(() => ({})) as Record<string, unknown>;
   if (!response.ok) {
-    const serverCode = body.error;
-    const code: GrantExchangeErrorCode =
-      serverCode === "expired"
-        ? "expired"
-        : serverCode === "already_used"
-          ? "already_used"
-          : "invalid";
-    throw new GrantExchangeError(code, typeof body.detail === "string" ? body.detail : "Grant exchange failed.");
+    throw new OAuthFlowError(
+      body.error === "access_denied" ? "denied" : "invalid",
+      typeof body.error_description === "string" ? body.error_description : "Writing Tools rejected the login.",
+    );
   }
-
-  const scopes = Array.isArray(body.scopes) && body.scopes.every((scope) => typeof scope === "string")
-    ? body.scopes as string[]
-    : [];
+  const expiresIn = body.expires_in;
+  const scopes = typeof body.scope === "string" ? body.scope.trim().split(/\s+/).filter(Boolean) : [];
   if (
-    typeof body.access_token !== "string" ||
-    !body.access_token.startsWith("wtk_") ||
-    body.client_id !== "mindmap" ||
-    typeof body.expires_in !== "number" ||
-    !Number.isFinite(body.expires_in) ||
-    body.expires_in <= 0 ||
-    !scopes.includes("openai:chat")
+    body.token_type !== "Bearer" ||
+    scopes.length !== 1 || scopes[0] !== OAUTH_SCOPE ||
+    typeof expiresIn !== "number" || !Number.isFinite(expiresIn) ||
+    expiresIn <= 0 || expiresIn > 86_400 ||
+    !isCompactJwt(body.access_token)
   ) {
-    throw new GrantExchangeError("invalid", "Writing Tools returned an invalid mindmap session.");
-  }
-
-  const hasDocRead = scopes.includes("doc:read");
-  const doc = hasDocRead && body.doc != null ? validDocContext(body.doc) : null;
-  if (hasDocRead && body.doc != null && !doc) {
-    throw new GrantExchangeError("invalid", "Writing Tools returned an invalid document snapshot.");
+    throw new OAuthFlowError("invalid", "Writing Tools returned an invalid OAuth session.");
   }
   const now = (options.now ?? Date.now)();
+  const tokenExpiry = decodeJwtExpiry(body.access_token);
+  if (tokenExpiry !== null && tokenExpiry <= now) {
+    throw new OAuthFlowError("invalid", "Writing Tools returned an expired OAuth session.");
+  }
   return {
     version: 1,
     accessToken: body.access_token,
-    expiresAt: now + body.expires_in * 1000,
-    scopes,
-    doc,
-    capturedAt: now,
+    // Honour whichever lifetime is shorter: the JWT's own exp or the advertised expires_in.
+    expiresAt: earliest(tokenExpiry, now + expiresIn * 1000)!,
   };
 }
