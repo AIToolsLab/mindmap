@@ -453,14 +453,23 @@ const css = `
     display: flex;
     align-items: center;
     justify-content: space-between;
+    flex-wrap: wrap;
     gap: 7px;
+    row-gap: 6px;
     min-height: 32px;
   }
+  /* Buttons are flex: 0 0 auto, so a narrow chat panel cannot shrink either
+     group; without wrapping they overflow and paint over each other. */
   .composer-left-tools,
   .composer-action-tools {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: 7px;
+    min-width: 0;
+  }
+  .composer-action-tools {
+    margin-left: auto;
   }
 
   .mic-btn,
