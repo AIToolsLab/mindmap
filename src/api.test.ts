@@ -196,7 +196,12 @@ describe("typed assistant response parser", () => {
     expect(first[0].content).toContain("a reflection may draw from only one recorded user moment");
     expect(first[0].content).toContain("explicitly instructs you to nest one referenced card in another");
     expect(first[0].content).toContain("Use direct quotation only when it makes the referent clearer");
-    expect(first[0].content).toContain("For a large or abstract turn");
+    expect(first[0].content).toContain("For a large or abstract turn that does not state its structure explicitly");
+    // Stated structure is mirrored, not questioned; size alone never justifies a question.
+    expect(first[0].content).toContain("STATED STRUCTURE:");
+    expect(first[0].content).toContain("mirror it in that turn rather than asking about it");
+    expect(first[0].content).toContain("each [id] in the Source Bank is one sentence");
+    expect(first[0].content).toContain("Turn length is never by itself a reason to ask instead of mirror.");
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
@@ -237,6 +242,8 @@ describe("typed assistant response parser", () => {
     expect(messages[0].content).toContain("never invent a dangling candidateId");
     expect(messages[0].content).toContain("one exact contiguous substring from DRAFT");
     expect(messages[0].content).not.toContain("L0 NON-DIRECTIVE OBJECTIVE");
+    // The stated-structure rule is level-independent.
+    expect(messages[0].content).toContain("STATED STRUCTURE:");
   });
 
   it("uses a bounded Responses tool repair with the matching call id", async () => {
