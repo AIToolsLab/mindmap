@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import {
   UI_LOCALE_STORAGE_KEY,
   applyDocumentLocale,
@@ -11,7 +11,7 @@ import {
   uiDirection,
   uiLocaleOptions,
 } from "./ui-locale";
-import { uiString } from "./ui-strings";
+import { translatedLanguages, uiString } from "./ui-strings";
 
 describe("UI locale", () => {
   it("normalizes supported browser locales and falls back to English", () => {
@@ -50,6 +50,15 @@ describe("UI locale", () => {
     expect(options.some((option) => option.code === "en")).toBe(true);
     expect(options.some((option) => option.code === "zh" && option.nativeLabel.length > 0)).toBe(true);
     expect(options.some((option) => option.code === "source")).toBe(false);
+  });
+
+  it("loads a dictionary for every translation file in src/i18n", () => {
+    const files = readdirSync(new URL("../i18n/", import.meta.url))
+      .filter((name) => name.endsWith(".json") && name !== "source.json")
+      .map((name) => name.slice(0, -".json".length))
+      .sort();
+    expect(files.length).toBeGreaterThan(0);
+    expect(translatedLanguages()).toEqual(files);
   });
 
   it("uses Chinese static copy and safely falls back for missing UI strings", () => {
