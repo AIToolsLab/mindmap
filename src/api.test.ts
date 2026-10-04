@@ -203,6 +203,7 @@ describe("typed assistant response parser", () => {
     expect(first[0].content).toContain("each [id] in the Source Bank is one sentence");
     expect(first[0].content).toContain("Turn length is never by itself a reason to ask instead of mirror.");
     expect(first[0].content).toContain("Negation words are not glue");
+    expect(first[0].content).toContain("of the userPhrases and relationSpan it cites");
     expect(first[0].content).toContain("spelled as the user wrote it");
     expect(first[0].content).toContain("cite only the words the claim reproduces");
     expect(first[0].content).toContain("takes precedence over the turn-shape, map-pacing, and reflection-rhythm facts");

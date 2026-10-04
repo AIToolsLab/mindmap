@@ -587,6 +587,15 @@ describe("mirror validator — polarity", () => {
     expect(result.ok).toBe(true);
   });
 
+  it("counts a negation carried only by the relationSpan", () => {
+    const said = u("Speed does not support quality.");
+    const spans = [span("speed", said), span("quality", said)];
+    const negated = validateMirror({ claims: [claim("speed does not support quality", spans, "connection", { utteranceId: said.id, text: "does not support" })] }, [said], defaultConfig);
+    expect(checkOf(negated.claims[0], "polarity")?.ok).toBe(true);
+    const dropped = validateMirror({ claims: [claim("speed does support quality", spans, "connection", { utteranceId: said.id, text: "does not support" })] }, [said], defaultConfig);
+    expect(checkOf(dropped.claims[0], "polarity")?.ok).toBe(false);
+  });
+
   it("does not treat Chinese text as negated", () => {
     const said = u("写作自由很重要");
     const result = validateMirror({ claims: [claim("写作自由很重要", [span("写作自由很重要", said)])] }, [said], defaultConfig);
