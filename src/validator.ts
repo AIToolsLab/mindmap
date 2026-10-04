@@ -1,8 +1,8 @@
 /**
  * Mirror validator — the enforcement core.
  *
- * Before any mirror reflection can be shown to the user, it must pass two
- * grounding checks against the Source Bank. This is *code*, not prompting: a
+ * Before any mirror reflection can be shown to the user, it must pass three
+ * checks against the Source Bank. This is *code*, not prompting: a
  * reflection that fails cannot be displayed. The bounded recovery path
  * (see stage1-loop) decides what conversational move to make instead; code does
  * not interpret epistemic meaning (e.g. treating "I think" as uncertainty) —
@@ -14,9 +14,9 @@
  *      free, but there is no unsupported-word budget.
  *   2. Source-span grounding — does every claim trace to a user utterance that
  *      actually supports it? (catches new *relationships* built from real words)
- *   3. Polarity — a claim is negated exactly when its cited wording is. Negators
- *      are function words, so checks 1 and 2 alone let a mirror add or drop a
- *      "not" and reverse the user's meaning while every content word matches.
+ *   3. Polarity — a claim uses exactly the negation words of the phrases it
+ *      cites. Negators are function words, so checks 1 and 2 alone let a mirror
+ *      add a "not" and reverse the user's meaning while every content word matches.
  *
  * Checks run per-claim so the caller can show/confirm chunks independently and
  * knows exactly which span to ask about when one fails.
@@ -26,7 +26,7 @@ import type { MindmapConfig } from "./config";
 import {
   containsWholePhrase,
   contentTokens,
-  findWholePhraseRange,
+  foldWidthAndQuotes,
   isStopword,
   normalize,
   stem,
@@ -49,54 +49,59 @@ function ratio(part: number, whole: number): number {
 }
 
 /**
- * English negation markers, as produced by `tokenize`. Contractions split at the
- * apostrophe ("isn't" → "isn", "t"), so the bare "t" marks every n't form; the
- * apostrophe-less spellings are listed explicitly. Chinese negation is not
- * covered here: its markers are characters inside words (不是, 没有) and also
- * occur in non-negative words (非常), so a token list would misfire.
+ * English negation words. They are stopwords, so lexical grounding lets them in
+ * as free glue; this list takes them back out of that exemption. It does not
+ * interpret meaning — it only requires that a negation word be pointed at like
+ * a content word. The apostrophe-less spellings of n't forms map to "not".
+ * Chinese negation is not covered: its markers sit inside words (不是, 没有) and
+ * also occur in non-negative words (非常).
  */
-const NEGATION_MARKERS = new Set<string>([
-  "not", "no", "never", "nor", "neither", "none", "nobody", "nothing", "nowhere",
-  "cannot", "without", "t",
-  "dont", "doesnt", "didnt", "isnt", "arent", "wasnt", "werent", "cant", "couldnt",
+const NEGATION_WORDS = new Set<string>([
+  "not", "no", "never", "nor", "neither", "none", "nobody", "nothing", "nowhere", "without",
+]);
+const NOT_SPELLINGS = new Set<string>([
+  "cannot", "dont", "doesnt", "didnt", "isnt", "arent", "wasnt", "werent", "cant", "couldnt",
   "wont", "wouldnt", "shouldnt", "hasnt", "havent", "hadnt", "aint", "mustnt",
 ]);
 
-function hasNegation(tokens: string[]): boolean {
-  return tokens.some((token) => NEGATION_MARKERS.has(token));
-}
-
-/** How many tokens before a cited phrase can negate it ("does not really matter"). */
-const NEGATION_LOOKBEHIND = 2;
-
 /**
- * Is this cited span negated in the user's own words? Either the phrase itself
- * contains a negator, or one sits just before it in a cited utterance. The
- * second case stops a mirror from citing the words on either side of a "never"
- * ("X" + "matters" out of "X never matters") to drop it.
+ * The negation words in a text, so that "isn't", "is not" and "isnt" compare
+ * equal. "n't" is expanded as a literal substring before tokenizing (which
+ * would otherwise split "isn't" into "isn" + "t", indistinguishable from the
+ * letter T); no pattern matching or clause parsing is involved.
  */
-function spanIsNegated(span: SourceSpan, bank: Map<string, SourceUtterance>): boolean {
-  if (hasNegation(tokenize(span.userPhrase))) return true;
-  return citedTexts(span, bank).some((source) => {
-    const range = findWholePhraseRange(source, span.userPhrase);
-    if (!range) return false;
-    return hasNegation(tokenize(source.slice(0, range.start)).slice(-NEGATION_LOOKBEHIND));
-  });
+function negationWords(text: string): Set<string> {
+  const expanded = foldWidthAndQuotes(text).toLocaleLowerCase("und").split("n't").join(" not");
+  const words = new Set<string>();
+  for (const token of tokenize(expanded)) {
+    if (NEGATION_WORDS.has(token)) words.add(token);
+    else if (NOT_SPELLINGS.has(token)) words.add("not");
+  }
+  return words;
 }
 
 /**
- * Polarity — the claim is negated exactly when its cited wording is. Content-word
- * matching can't see this: "Money is not the main problem" uses only the content
- * words of "Money is the main problem".
+ * Polarity — a claim uses exactly the negation words of the user phrases it
+ * cites. Content-word matching can't see this: "Money is not the main problem"
+ * uses only the content words of "Money is the main problem". Like lexical
+ * grounding, this compares the claim with its cited pointers, not with the
+ * surrounding sentence, so it catches an added negation and one dropped from
+ * inside a cited phrase. It does not catch a negation dropped by citing the
+ * words on either side of it; the user's confirmation of each chunk covers that.
  */
-function checkPolarity(
-  claim: GroundedClaim,
-  bank: Map<string, SourceUtterance>,
-): MirrorCheckResult {
-  const claimNegated = hasNegation(tokenize(claim.text));
-  const citedNegated = claim.sourceSpans.some((span) => spanIsNegated(span, bank));
-  return { check: "polarity", ok: claimNegated === citedNegated, score: claimNegated === citedNegated ? 1 : 0, threshold: 1 };
+function checkPolarity(claim: GroundedClaim): MirrorCheckResult {
+  const inClaim = negationWords(claim.text);
+  const cited = negationWords([
+    ...claim.sourceSpans.map((span) => span.userPhrase),
+    ...(claim.relationSpan ? [claim.relationSpan.text] : []),
+  ].join(" \n "));
+  const ok = inClaim.size === cited.size && [...inClaim].every((word) => cited.has(word));
+  return { check: "polarity", ok, score: ok ? 1 : 0, threshold: 1 };
 }
+
+/** Repair hint for a polarity failure; stage1-loop forwards it to the repair call. */
+export const POLARITY_REPAIR_NOTE =
+  "The claim's negation words do not match the user phrases it cites: use 'not', 'no', 'never' or n't only where the cited userPhrase has it, and include the negating word in the userPhrase whenever it applies.";
 
 /** Look up the text of cited utterances; missing ids contribute nothing. */
 function citedTexts(span: SourceSpan, bank: Map<string, SourceUtterance>): string[] {
@@ -285,7 +290,7 @@ function validateClaim(
   const lexical = checkLexicalGrounding(claim, citedPhraseStemSet(claim));
   const grounding = checkSpanGrounding(claim, bank, cfg.mirror.spanGroundingMin);
 
-  const polarity = checkPolarity(claim, bank);
+  const polarity = checkPolarity(claim);
 
   const checks = [lexical.result, grounding.result, polarity];
   const ok = checks.every((c) => c.ok);
@@ -296,9 +301,7 @@ function validateClaim(
 
   const failed = checks.filter((c) => !c.ok).map((c) => c.check);
   // The polarity note goes to the repair call verbatim, so it names the fix.
-  const polarityNote = polarity.ok
-    ? ""
-    : " The claim's negation does not match the cited wording: keep a 'not'/'never'/n't exactly where the user said it, and never add one.";
+  const polarityNote = polarity.ok ? "" : ` ${POLARITY_REPAIR_NOTE}`;
   const message = ok
     ? "Reflection is grounded in the user's words."
     : `Reflection not grounded in the user's words — failed checks: ${failed.join(", ")}.${polarityNote}`;

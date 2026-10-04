@@ -202,6 +202,7 @@ describe("typed assistant response parser", () => {
     expect(first[0].content).toContain("mirror it in that turn rather than asking about it");
     expect(first[0].content).toContain("each [id] in the Source Bank is one sentence");
     expect(first[0].content).toContain("Turn length is never by itself a reason to ask instead of mirror.");
+    expect(first[0].content).toContain("Negation words are not glue");
     expect(first[0].content).toContain("takes precedence over the turn-shape, map-pacing, and reflection-rhythm facts");
     expect(first[0].content).toContain("one recorded user moment (one user turn, which may contain several sentences and several claims)");
     expect(fetchMock).toHaveBeenCalledTimes(2);

@@ -508,41 +508,64 @@ describe("mirror validator — 2 grounding checks", () => {
 
 describe("mirror validator — polarity", () => {
   const span = (text: string, utterance: SourceUtterance, phrase = text) => ({ claimText: text, utteranceIds: [utterance.id], userPhrase: phrase });
+  const polarityOf = (text: string, spans: ReturnType<typeof span>[], bank: SourceUtterance[]) =>
+    checkOf(validateMirror({ claims: [claim(text, spans)] }, bank, defaultConfig).claims[0], "polarity")?.ok;
 
   it("rejects a mirror that adds a negation the user never said", () => {
     const said = u("Money is the main problem in my essay.");
-    for (const text of ["Money is not the main problem", "Money is never the main problem", "Money isn't the main problem"]) {
+    for (const text of ["Money is not the main problem", "Money is never the main problem", "Money isn't the main problem", "Money is no main problem"]) {
       const result = validateMirror({ claims: [claim(text, [span(text, said, "Money is the main problem")])] }, [said], defaultConfig);
       expect(result.ok, text).toBe(false);
       expect(checkOf(result.claims[0], "polarity")?.ok, text).toBe(false);
-      expect(result.claims[0].message).toContain("negation");
+      expect(result.claims[0].message).toContain("negation words do not match");
     }
   });
 
   it("rejects a mirror that drops a negation inside the cited phrase", () => {
     const said = u("Money isn't the main problem in my essay.");
-    const result = validateMirror({ claims: [claim("Money is the main problem", [span("Money is the main problem", said, "Money isn't the main problem")])] }, [said], defaultConfig);
-    expect(checkOf(result.claims[0], "polarity")?.ok).toBe(false);
+    expect(polarityOf("Money is the main problem", [span("Money is the main problem", said, "Money isn't the main problem")], [said])).toBe(false);
   });
 
-  it("rejects dropping a negation by citing the words around it", () => {
-    const said = u("Structure never matters to my readers.");
-    const result = validateMirror({
-      claims: [claim("Structure matters to my readers", [span("Structure", said), span("matters to my readers", said)])],
-    }, [said], defaultConfig);
-    expect(checkOf(result.claims[0], "polarity")?.ok).toBe(false);
+  it("rejects swapping one negation word for another", () => {
+    const said = u("Money is not the main problem.");
+    expect(polarityOf("Money is never the main problem", [span("Money is never the main problem", said, "Money is not the main problem")], [said])).toBe(false);
   });
 
-  it("keeps faithful negated and unnegated mirrors passing", () => {
-    const negated = u("Money doesn't matter as much as time.");
-    const plain = u("Time matters most.");
-    expect(validateMirror({ claims: [claim("money doesn't matter as much as time", [span("money doesn't matter as much as time", negated, "Money doesn't matter as much as time")])] }, [negated], defaultConfig).ok).toBe(true);
-    expect(validateMirror({ claims: [claim("time matters most", [span("time matters most", plain, "Time matters most")])] }, [plain], defaultConfig).ok).toBe(true);
+  it("treats n't, apostrophe-less and spelled-out 'not' as the same word", () => {
+    const said = u("Money is not the main problem, and I can’t ignore time.");
+    expect(polarityOf("Money isn't the main problem", [span("Money isn't the main problem", said, "Money is not the main problem")], [said])).toBe(true);
+    expect(polarityOf("Money isnt the main problem", [span("Money isnt the main problem", said, "Money is not the main problem")], [said])).toBe(true);
+    expect(polarityOf("I cannot ignore time", [span("I cannot ignore time", said, "I can’t ignore time")], [said])).toBe(true);
   });
 
-  it("does not treat a negation elsewhere in the sentence as negating the cited phrase", () => {
-    const said = u("Money matters, not time.");
-    const result = validateMirror({ claims: [claim("money matters", [span("money matters", said, "Money matters")])] }, [said], defaultConfig);
+  it("does not read a standalone letter T as a negation", () => {
+    const said = u("Section T: safety matters.");
+    expect(polarityOf("Section T safety matters", [span("Section T safety matters", said, "Section T: safety matters")], [said])).toBe(true);
+  });
+
+  // The check compares a claim with its cited pointers, not the surrounding
+  // sentence, so negation elsewhere in the user's sentence never blocks a mirror.
+  it.each([
+    ["Not only money matters, but time matters too.", "money matters"],
+    ["Without delay, submit the draft.", "submit the draft"],
+    ["No matter what, clarity matters.", "clarity matters"],
+    ["Money matters, not time.", "money matters"],
+    ["I do not want a long intro; the argument comes first.", "the argument comes first"],
+  ])("keeps a faithful unnegated mirror from %s passing", (sentence, phrase) => {
+    const said = u(sentence);
+    const result = validateMirror({ claims: [claim(phrase, [span(phrase, said)])] }, [said], defaultConfig);
     expect(checkOf(result.claims[0], "polarity")?.ok).toBe(true);
+    expect(result.ok).toBe(true);
+  });
+
+  it("keeps faithful negated mirrors passing", () => {
+    const negated = u("Money doesn't matter as much as time.");
+    const result = validateMirror({ claims: [claim("money doesn't matter as much as time", [span("money doesn't matter as much as time", negated, "Money doesn't matter as much as time")])] }, [negated], defaultConfig);
+    expect(result.ok).toBe(true);
+  });
+
+  it("does not treat Chinese text as negated", () => {
+    const said = u("写作自由很重要");
+    expect(polarityOf("写作自由很重要", [span("写作自由很重要", said)], [said])).toBe(true);
   });
 });
