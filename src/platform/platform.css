@@ -38,6 +38,10 @@
 
 .platform-workspace {
   min-height: 100vh;
+  /* #root is a flex row; without this the wrapper shrinks to its content's
+     width, leaving dead space and making the layout jump when panels open. */
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .platform-disconnect {
