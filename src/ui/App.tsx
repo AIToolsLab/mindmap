@@ -2385,6 +2385,171 @@ const css = `
       max-height: min(70vh, 560px);
     }
   }
+
+  /* ---- Polish layer -------------------------------------------------------
+     One consistent finish for the controls: rounded corners, a soft top sheen,
+     a gentle drop shadow, a small lift on hover, a press on click, and a
+     visible keyboard focus ring. Colours stay with each control's own rule;
+     the sheen is an inset shadow so hover rules that reset \`background\` keep it.
+     Nothing here changes layout except toolbar buttons no longer shrinking. */
+  :root {
+    --mm-sheen: inset 0 1px 0 rgba(255, 255, 255, 0.9), inset 0 10px 12px -10px rgba(255, 255, 255, 0.9);
+    --mm-lift: 0 1px 2px rgba(35, 31, 24, 0.07), 0 1px 1px rgba(35, 31, 24, 0.04);
+    --mm-lift-hover: 0 3px 8px rgba(35, 31, 24, 0.10), 0 1px 2px rgba(35, 31, 24, 0.06);
+    --mm-press: inset 0 1px 2px rgba(35, 31, 24, 0.12);
+    --mm-focus: 0 0 0 3px rgba(26, 111, 163, 0.28);
+  }
+
+  .map-copy {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 4px 8px;
+    border: 1px solid #d8d5ce;
+    background: #fff;
+    color: #4f4b45;
+    cursor: pointer;
+  }
+  .map-copy:hover { background: #f6f4ef; }
+
+  .map-header button,
+  .chat-header .reset-btn,
+  .draft-panel-btn,
+  .underhood-panel .underhood-close,
+  .underhood-panel .nextmove-button {
+    border-radius: 8px;
+    box-shadow: var(--mm-sheen), var(--mm-lift);
+    transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, transform 0.12s ease, opacity 0.15s ease;
+  }
+  /* The toolbar scrolls sideways when space is tight; buttons keep their size
+     instead of wrapping their labels onto two lines. */
+  .map-header button {
+    min-height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  /* The header wraps instead of using fixed breakpoints: the right-hand tools
+     drop to a second row only when the row is actually too narrow (a narrow
+     window, a wide chat panel, or the Control Room taking its share). The
+     grid breakpoints above become inert; a single over-long group still
+     scrolls sideways as before. */
+  .map-header {
+    display: flex;
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+  .map-left-tools { flex: 0 1 auto; }
+  /* Right-aligned with an auto margin rather than justify-content: flex-end,
+     so when the group overflows (narrow window with the Control Room open) it
+     scrolls sideways from its start instead of hiding the start off-screen. */
+  .map-right-tools { flex: 0 1 auto; margin-left: auto; justify-content: flex-start; }
+  .map-right-tools > :first-child { margin-left: auto; }
+  /* Chat header: at the default chat width its contents were ~44px wider than
+     the panel, so the assistance picker was clipped. The Think/Map slider now
+     gives up width first; if the panel is dragged narrower still, the picker
+     wraps below instead of being cut off. */
+  .chat-header { gap: 10px; flex-wrap: wrap; row-gap: 6px; }
+  .chat-question-bias {
+    /* A small basis decides line breaking; it then grows into the free space. */
+    flex: 1 1 120px;
+    min-width: 120px;
+    grid-template-columns: auto minmax(44px, 118px) auto;
+  }
+  .chat-header .assistance-contract { flex: 0 0 auto; }
+  .map-header select,
+  .chat-header select {
+    border-radius: 8px;
+    box-shadow: var(--mm-sheen), var(--mm-lift);
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+
+  .map-header button:hover:not(:disabled),
+  .chat-header .reset-btn:hover:not(:disabled),
+  .draft-panel-btn:hover:not(:disabled),
+  .underhood-panel .underhood-close:hover:not(:disabled),
+  .underhood-panel .nextmove-button:hover:not(:disabled) {
+    box-shadow: var(--mm-sheen), var(--mm-lift-hover);
+    transform: translateY(-1px);
+  }
+  .chat-header .reset-btn:hover:not(:disabled) { opacity: 1; background: #e9e7e1; }
+  .map-header button:active:not(:disabled),
+  .chat-header .reset-btn:active:not(:disabled),
+  .draft-panel-btn:active:not(:disabled),
+  .underhood-panel .underhood-close:active:not(:disabled),
+  .underhood-panel .nextmove-button:active:not(:disabled) {
+    box-shadow: var(--mm-press);
+    transform: translateY(0);
+  }
+  .map-header button:disabled,
+  .chat-header .reset-btn:disabled,
+  .draft-panel-btn:disabled,
+  .underhood-panel .nextmove-button:disabled {
+    box-shadow: none;
+    transform: none;
+  }
+
+  .send-btn {
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 2px 6px rgba(26, 111, 163, 0.32);
+    transition: opacity 0.15s ease, box-shadow 0.15s ease, transform 0.12s ease;
+  }
+  .send-btn:hover:not(:disabled) { opacity: 1; transform: translateY(-1px); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 4px 10px rgba(26, 111, 163, 0.38); }
+  .send-btn:disabled { box-shadow: none; }
+
+  .uth-toggle-btn,
+  .draft-toggle-btn,
+  .mic-btn {
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+  }
+
+  .map-header button:focus-visible,
+  .chat-header button:focus-visible,
+  .map-header select:focus-visible,
+  .chat-header select:focus-visible,
+  .draft-panel-btn:focus-visible,
+  .underhood-panel button:focus-visible,
+  .uth-toggle-btn:focus-visible,
+  .draft-toggle-btn:focus-visible,
+  .mic-btn:focus-visible,
+  .send-btn:focus-visible {
+    outline: none;
+    box-shadow: var(--mm-focus);
+  }
+
+  .map-card {
+    border-radius: 10px;
+    box-shadow: 0 1px 2px rgba(35, 31, 24, 0.05), 0 8px 22px rgba(35, 31, 24, 0.07);
+    transition: box-shadow 0.18s ease, border-color 0.18s ease;
+  }
+  .map-card:hover { box-shadow: 0 1px 2px rgba(35, 31, 24, 0.06), 0 12px 28px rgba(35, 31, 24, 0.10); }
+  .map-card.selected { box-shadow: 0 0 0 3px rgba(26, 111, 163, 0.14), 0 10px 26px rgba(26, 111, 163, 0.16); }
+
+  .react-flow__controls {
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid #e2ded5;
+    box-shadow: 0 4px 14px rgba(35, 31, 24, 0.08);
+  }
+  .react-flow__controls-button { transition: background-color 0.15s ease; }
+  .react-flow__controls-button:hover { background: #f4f2ed; }
+  .react-flow__minimap {
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid #e2ded5;
+    box-shadow: 0 4px 14px rgba(35, 31, 24, 0.08);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .map-header button,
+    .chat-header .reset-btn,
+    .draft-panel-btn,
+    .underhood-panel button,
+    .send-btn {
+      transition: none;
+      transform: none !important;
+    }
+  }
 `;
 
 // ---------------------------------------------------------------------------
@@ -2429,8 +2594,9 @@ function clampBoxPosition(pos: DraftPanelPos, w: number, h: number): DraftPanelP
 
 function defaultDraftPosition(size: DraftPanelSize): DraftPanelPos {
   if (typeof window === "undefined") return { x: 0, y: 0 };
+  // Start below the map toolbar even when it wraps (up to ~111px tall).
   return clampDraftPosition(
-    { x: window.innerWidth - size.w - 20, y: 80 },
+    { x: window.innerWidth - size.w - 20, y: 124 },
     size,
   );
 }
