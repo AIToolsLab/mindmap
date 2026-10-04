@@ -22,7 +22,7 @@ import { CandidateStore, SourceBank } from "./store";
 import { detectTurnShape } from "./turn-shape";
 import { detectLatestUserLanguagePattern, type LanguageContext } from "./language-context";
 import type { CandidateThought, CandidateTarget, GroundedClaim, SourceUtterance } from "./types";
-import { validateGroundedClaims, validateMirror } from "./validator";
+import { POLARITY_REPAIR_NOTE, validateGroundedClaims, validateMirror } from "./validator";
 
 export interface ProcessTurnOptions {
   mapRevision: number;
@@ -240,7 +240,8 @@ function createProposal(envelope: AssistantResponseEnvelope, state: Conversation
     }
     const validation = validateGroundedClaims(claims, state.bank.getAll(), config);
     if (!validation.ok || !claims.every((claim) => deriveClaimAttribution(claim, state.bank.getAll()) === "asserted")) {
-      return { rejection: { code: "grounded_recap_validation_failed", detail: "The recap must use exact, source-backed user wording." }, diagnostics: [diagnostic("validation", "rejected", "grounded_recap_validation_failed", "Grounded recap evidence pointers did not validate.")] };
+      const polarityFailed = validation.claims.some((claim) => claim.checks.some((check) => check.check === "polarity" && !check.ok));
+      return { rejection: { code: "grounded_recap_validation_failed", detail: `The recap must use exact, source-backed user wording.${polarityFailed ? ` ${POLARITY_REPAIR_NOTE}` : ""}` }, diagnostics: [diagnostic("validation", "rejected", "grounded_recap_validation_failed", "Grounded recap evidence pointers did not validate.")] };
     }
     return { diagnostics: [diagnostic("validation", "accepted", "grounded_recap_valid", "Grounded recap evidence pointers validated; no map proposal was created.")] };
   }
