@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { containsWholePhrase } from "../../src/normalize";
+import { containsWholePhrase } from "../../src/grounding/normalize";
 import { EVAL_SCENARIOS, MANIPULATION_CHECK_SCENARIOS } from "./index";
 
 describe("combined evaluation scenario set", () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ASSISTANCE_CONTRACTS, normalizeInfluenceTrace, snapshotContract } from "./assistance-contract";
-import { parseAssistantResponse, renderContext } from "./api";
+import { parseAssistantResponse, renderContext } from "./coach/api";
 import { defaultConfig } from "./config";
 
 describe("assistance contracts", () => {
