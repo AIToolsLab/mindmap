@@ -1,4 +1,4 @@
-import type { AssistantResponse } from "../src/assistant-response";
+import type { AssistantResponse } from "../src/coach/assistant-response";
 
 export interface CsvRow {
   [column: string]: string;

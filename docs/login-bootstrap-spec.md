@@ -35,7 +35,7 @@ automatic document reading. There is no `doc:read` scope any more.
 
 ### 1. Replace the launch gate with a login gate
 
-Today `launchRequired()` in `src/platform-session.ts` refuses to start unless
+Today `launchRequired()` in `src/platform/platform-session.ts` refuses to start unless
 Writing Tools launched the app. Replace it with `loginRequired()` **keeping the
 exact same shape**:
 

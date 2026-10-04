@@ -37,7 +37,7 @@ rebuilding; these donor modules already encode the right philosophy:
 Reuse (near) as-is:
 - `src/i18n/*.json` — **34 static UI dictionaries including `zh.json`**, keyed
   by English source string. Chinese UI works day one.
-- `src/ui-strings.ts` — static dictionary lookup with case-folded keys;
+- `src/ui/ui-strings.ts` — static dictionary lookup with case-folded keys;
   partial dictionary degrades in coverage, never correctness.
 - `src/language.ts` — the write/view language split. Its own doc comment states
   a view-language translation is "never written back, never harvested into the

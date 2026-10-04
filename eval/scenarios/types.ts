@@ -1,5 +1,5 @@
 import type { AssistanceLevel } from "../../src/assistance-contract";
-import type { ConversationMessage } from "../../src/api";
+import type { ConversationMessage } from "../../src/coach/api";
 import type { CandidateTarget } from "../../src/types";
 
 export interface EvalMemoryEvent {

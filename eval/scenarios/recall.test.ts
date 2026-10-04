@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { containsWholePhrase } from "../../src/normalize";
+import { containsWholePhrase } from "../../src/grounding/normalize";
 import { RECALL_EVAL_SCENARIOS } from "./recall";
 
 describe("recall eval scenario fixtures", () => {

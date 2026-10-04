@@ -63,6 +63,19 @@ MINDMAP_OAUTH_REDIRECT_URIS=https://mindmap.thoughtful-ai.com/
 Restart the backend after setting them so startup provisioning creates or
 updates the fixed client. Do not register localhost on the production server.
 
+## Source layout
+
+| Folder | Responsibility |
+| --- | --- |
+| `src/` | Entry point and shared definitions |
+| `src/coach/` | One model turn: prompt, transport, response parsing, and turn loop |
+| `src/grounding/` | Code checks on AI output |
+| `src/map/` | Map, Source Bank, proposal state, and provenance |
+| `src/session/` | Persistence, logging, and diagnostics |
+| `src/platform/` | Writing Tools sign-in |
+| `src/ui/` | React components, UI copy, and DOM helpers |
+| `src/i18n/` | Translation dictionaries |
+
 ## Verification
 
 ```sh

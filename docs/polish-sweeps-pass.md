@@ -59,7 +59,7 @@ sync with no tool to regenerate. Port the donor's generator.
      module does **not exist on `mindmap-main`** (the donor `language.ts` is on
      the explicit-skip list) and there is **no `LANGUAGE_CODES` constant
      anywhere** — `mindmap-main` discovers locales at build time via
-     `import.meta.glob("./i18n/*.json")` in `src/ui-strings.ts`. So the donor
+     `import.meta.glob("./i18n/*.json")` in `src/ui/ui-strings.ts`. So the donor
      script throws immediately. **Fix:** rewrite `supportedLanguages()` to
      enumerate the existing `src/i18n/*.json` filenames (excluding
      `source.json`), e.g. read the `i18n` dir and strip `.json`. This keeps the
