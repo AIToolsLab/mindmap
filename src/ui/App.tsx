@@ -2446,6 +2446,18 @@ const css = `
      scrolls sideways from its start instead of hiding the start off-screen. */
   .map-right-tools { flex: 0 1 auto; margin-left: auto; justify-content: flex-start; }
   .map-right-tools > :first-child { margin-left: auto; }
+  /* Chat header: at the default chat width its contents were ~44px wider than
+     the panel, so the assistance picker was clipped. The Think/Map slider now
+     gives up width first; if the panel is dragged narrower still, the picker
+     wraps below instead of being cut off. */
+  .chat-header { gap: 10px; flex-wrap: wrap; row-gap: 6px; }
+  .chat-question-bias {
+    /* A small basis decides line breaking; it then grows into the free space. */
+    flex: 1 1 120px;
+    min-width: 120px;
+    grid-template-columns: auto minmax(44px, 118px) auto;
+  }
+  .chat-header .assistance-contract { flex: 0 0 auto; }
   .map-header select,
   .chat-header select {
     border-radius: 8px;
