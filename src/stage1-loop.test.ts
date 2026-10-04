@@ -5,6 +5,7 @@ import { buildContext, createConversationState, deriveClaimAttribution, MAX_MODE
 import { cardRef, resetIdCounter } from "./store";
 import { ASSISTANCE_CONTRACTS } from "./assistance-contract";
 import { ModelResponseValidationError } from "./assistant-response";
+import { POLARITY_REPAIR_NOTE } from "./validator";
 
 beforeEach(() => resetIdCounter());
 
@@ -152,6 +153,47 @@ describe("typed Stage 1 controller", () => {
     const result = await processTurn(state, "what I am trying to understand", model, defaultConfig, store.toLLMContext(), { mapRevision: 0, requireConnectionLabel: true, store });
     expect(model.mock.calls[1]?.[1]).toMatchObject({ code: "grounded_recap_validation_failed" });
     expect(result.response).toMatchObject({ kind: "question" });
+  });
+
+  it("repairs a polarity rejection from a broad pointer without reaching the forced question", async () => {
+    const state = createConversationState();
+    const store = new ThoughtUnitStore();
+    const model = vi.fn(async (context: import("./llm-contract").LLMContext, rejection?: import("./assistant-response").StructuredRejection) => {
+      const sourceId = context.bank[0]!.id;
+      const id = rejection ? "c2" : "c1";
+      // First attempt cites a pointer wider than the claim, carrying a "not" the claim leaves out.
+      const userPhrase = rejection ? "money matters" : "Not only money matters";
+      return {
+        response: { kind: "reflection" as const, text: "money matters", reflection: { claims: [{
+          id, text: "money matters", candidateId: id, target: "idea" as const,
+          sourceSpans: [{ claimText: "money matters", userPhrase, utteranceIds: [sourceId] }],
+        }] } },
+        advisory: { candidateUpserts: [{ id, target: "idea" as const, gist: "money", addEvidenceIds: [sourceId], status: "active" as const }] },
+      };
+    });
+
+    const result = await processTurn(state, "Not only money matters, but time matters too.", model, defaultConfig, store.toLLMContext(), { mapRevision: 0, requireConnectionLabel: true, store });
+    expect(model).toHaveBeenCalledTimes(2);
+    expect(model.mock.calls[1]?.[1]).toMatchObject({ code: "reflection_validation_failed", reflectionRecovery: { stage: "informed_repair" } });
+    expect(model.mock.calls[1]?.[1]?.detail).toContain(POLARITY_REPAIR_NOTE);
+    expect(result.response).toMatchObject({ kind: "reflection", text: "money matters" });
+  });
+
+  it("forwards the polarity repair note when a grounded recap's negation does not match its pointer", async () => {
+    const state = createConversationState();
+    const store = new ThoughtUnitStore();
+    const model = vi.fn(async (context: import("./llm-contract").LLMContext, rejection?: import("./assistant-response").StructuredRejection) => {
+      if (rejection) return { response: { kind: "question" as const, text: "What matters most here?" } };
+      const sourceId = context.bank[0]!.id;
+      return { response: { kind: "grounded_recap" as const, text: "recap", recap: { claims: [{
+        id: "r1", text: "money is the main problem", target: "idea" as const,
+        sourceSpans: [{ claimText: "money is the main problem", userPhrase: "Money is not the main problem", utteranceIds: [sourceId] }],
+      }] } } };
+    });
+
+    await processTurn(state, "Money is not the main problem.", model, defaultConfig, store.toLLMContext(), { mapRevision: 0, requireConnectionLabel: true, store });
+    expect(model.mock.calls[1]?.[1]).toMatchObject({ code: "grounded_recap_validation_failed" });
+    expect(model.mock.calls[1]?.[1]?.detail).toContain(POLARITY_REPAIR_NOTE);
   });
 
   it("repairs a question whose draft anchor is not an exact current-draft substring", async () => {

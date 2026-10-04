@@ -88,6 +88,14 @@ function negationWords(text: string): Set<string> {
  * surrounding sentence, so it catches an added negation and one dropped from
  * inside a cited phrase. It does not catch a negation dropped by citing the
  * words on either side of it; the user's confirmation of each chunk covers that.
+ *
+ * Two consequences of comparing pointers:
+ * - Spelling equivalence ("isn't" = "is not") holds only in this check. Lexical
+ *   grounding still requires the user's own spelling, as it does for every word,
+ *   so the prompt asks the model to keep it.
+ * - A pointer wider than the claim that carries a negation the claim leaves out
+ *   ("Not only money matters" cited for "money matters") is rejected; the repair
+ *   note asks for the narrower pointer.
  */
 function checkPolarity(claim: GroundedClaim): MirrorCheckResult {
   const inClaim = negationWords(claim.text);
@@ -101,7 +109,7 @@ function checkPolarity(claim: GroundedClaim): MirrorCheckResult {
 
 /** Repair hint for a polarity failure; stage1-loop forwards it to the repair call. */
 export const POLARITY_REPAIR_NOTE =
-  "The claim's negation words do not match the user phrases it cites: use 'not', 'no', 'never' or n't only where the cited userPhrase has it, and include the negating word in the userPhrase whenever it applies.";
+  "The claim's negation words do not match the user phrases it cites. If the user negated the idea, keep their negating word, spelled as they wrote it, in both the claim and its userPhrase; if the claim does not negate it, cite only the words the claim reproduces so the userPhrase holds no 'not', 'no', 'never', n't or 'without'.";
 
 /** Look up the text of cited utterances; missing ids contribute nothing. */
 function citedTexts(span: SourceSpan, bank: Map<string, SourceUtterance>): string[] {
