@@ -24,7 +24,8 @@ export const proposeCard: Tool = {
     const pieces = stringList(obj(args)?.pieces);
     if (!pieces || pieces.length === 0) return refuse("`pieces` must be a non-empty list of strings.", "invalid arguments");
     const text = pieces.join(" ").trim();
-    const summary = quote(text);
+    // Not shortened: the chat shows this and the writer must see the whole card to decide.
+    const summary = `"${text}"`;
 
     if (pieces.some((p) => !hasWords(p))) return refuse("Every piece needs at least one word.", summary);
 

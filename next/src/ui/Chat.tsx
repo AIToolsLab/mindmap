@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { proposalLabel } from "../state/labels";
 import { blockedReason } from "../state/map";
 import type { Proposal, Session, TranscriptItem } from "../state/types";
@@ -57,9 +57,28 @@ function ToolLine({ item, session, busy, onAccept, onReject }: { item: Extract<T
   );
 }
 
+/**
+ * The coach sometimes writes **bold**; show it as bold instead of asterisks. Display
+ * formatting only (React escapes the text), nothing else from Markdown.
+ */
+function withBold(text: string): ReactNode[] {
+  return text.split(/(\*\*[^*\n]+\*\*)/g).map((part, i) =>
+    part.length > 4 && part.startsWith("**") && part.endsWith("**") ? <strong key={i}>{part.slice(2, -2)}</strong> : part,
+  );
+}
+
 export function Chat({ session, busy, onSend, onAccept, onReject }: Props) {
   const [text, setText] = useState("");
   const end = useRef<HTMLDivElement>(null);
+  const box = useRef<HTMLTextAreaElement>(null);
+
+  // The message box grows with what's typed, up to a cap set in CSS (max-height).
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight + 2}px`;
+  }, [text]);
   // Braces matter: scrollIntoView() returns a Promise in current Chrome, and an effect
   // must return nothing or a cleanup function.
   useEffect(() => {
@@ -81,7 +100,7 @@ export function Chat({ session, busy, onSend, onAccept, onReject }: Props) {
             <ToolLine key={i} item={item} session={session} busy={busy} onAccept={onAccept} onReject={onReject} />
           ) : (
             <div key={i} className={`msg msg-${item.kind}`}>
-              {item.text}
+              {item.kind === "coach" ? withBold(item.text) : item.text}
             </div>
           ),
         )}
@@ -90,6 +109,8 @@ export function Chat({ session, busy, onSend, onAccept, onReject }: Props) {
       </div>
       <div className="composer">
         <textarea
+          ref={box}
+          rows={3}
           aria-label="Message"
           placeholder="Say what's on your mind…"
           value={text}

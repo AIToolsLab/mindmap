@@ -16,6 +16,9 @@
 html, body, #root { height: 100%; margin: 0; }
 body { background: var(--bg); }
 button, select, textarea, input { font: inherit; color: inherit; }
+/* Spaces typed at the end of a wrapped line take up room and wrap like any character,
+   so the caret visibly moves (by default they "hang" past the edge, invisibly). */
+textarea { white-space: break-spaces; overflow-wrap: anywhere; }
 button {
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -32,11 +35,11 @@ button:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2p
 .app {
   height: 100%;
   display: grid;
-  grid-template-columns: 380px minmax(0, 1fr);
+  grid-template-columns: clamp(340px, 30vw, 480px) minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr);
   grid-template-areas: "bar bar" "chat map";
 }
-.app.with-draft { grid-template-columns: 380px minmax(0, 1fr) 320px; grid-template-areas: "bar bar bar" "chat map draft"; }
+.app.with-draft { grid-template-columns: clamp(340px, 30vw, 480px) minmax(0, 1fr) 320px; grid-template-areas: "bar bar bar" "chat map draft"; }
 
 .toolbar {
   grid-area: bar;
@@ -88,7 +91,7 @@ button:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2p
 .tool-why summary { cursor: pointer; color: var(--muted); font-size: 12px; }
 .tool-why > div { padding: 4px 0 2px 14px; }
 .composer { display: flex; gap: 8px; padding: 10px 12px 4px; border-top: 1px solid var(--line); }
-.composer textarea { flex: 1; min-height: 56px; resize: vertical; border: 1px solid var(--line); border-radius: 10px; padding: 8px; }
+.composer textarea { flex: 1; min-height: 76px; max-height: 40vh; overflow-y: auto; resize: none; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; line-height: 1.45; }
 .composer .send { align-self: flex-end; background: var(--blue); border-color: var(--blue); color: #fff; }
 .composer .send:hover:not(:disabled) { background: #155d89; }
 .hint { padding: 0 12px 8px; font-size: 11px; }

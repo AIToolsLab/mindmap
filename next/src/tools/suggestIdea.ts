@@ -1,5 +1,5 @@
 import { refText } from "../state/map";
-import { obj, quote, refuse, type Tool } from "./common";
+import { obj, refuse, type Tool } from "./common";
 
 /**
  * Spec §5.4. Offered at every level but refused below L2, so the model meets the
@@ -20,7 +20,7 @@ export const suggestIdea: Tool = {
   handle(args, ctx) {
     const a = obj(args);
     const text = typeof a?.text === "string" ? a.text.trim() : "";
-    const summary = text ? quote(text) : "(empty)";
+    const summary = text ? `"${text}"` : "(empty)";
     if (ctx.level !== 2 && ctx.checks) return refuse(`suggest_idea isn't available at L${ctx.level}.`, summary);
     if (!text) return refuse("A suggestion needs some text.", summary);
     const near = typeof a?.near_card === "string" && a.near_card ? a.near_card : null;
