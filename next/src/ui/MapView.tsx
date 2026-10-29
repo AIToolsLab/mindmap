@@ -25,7 +25,8 @@ export interface MapActions {
   /** Take a card out of its parent, leaving it where it was dropped (canvas position). */
   takeOutAt: (id: string, x: number, y: number) => void;
   takeOut: (id: string) => void;
-  edit: (id: string, text: string) => void;
+  /** End of editing a card's text; `text` is null when it didn't change or was cancelled. */
+  finishEdit: (id: string, text: string | null) => void;
   remove: (id: string) => void;
   link: (from: string, to: string) => void;
   relabel: (linkId: string) => void;
@@ -55,7 +56,7 @@ export function MapView({ map, readOnly, editId, setEditId, actions }: Props) {
       onStartEdit: (id: string) => setEditId(id),
       onFinishEdit: (id: string, text: string | null) => {
         setEditId(null);
-        if (text !== null) actions.edit(id, text);
+        actions.finishEdit(id, text);
       },
       onDelete: actions.remove,
       onTakeOut: actions.takeOut,

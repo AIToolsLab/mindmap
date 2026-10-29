@@ -41,6 +41,8 @@ export function App() {
   current.current = session;
   const busyRef = useRef(busy);
   busyRef.current = busy;
+  /** A card just made with "+ Card"; if it's left empty, it goes away again. */
+  const fresh = useRef<string | null>(null);
 
   useEffect(() => {
     setSaved(saveSession(session));
@@ -63,7 +65,14 @@ export function App() {
       nest: (child, parent) => act((s) => setParent(s, child, parent)),
       takeOutAt: (id, x, y) => act((s) => moveCard(setParent(s, id, null), id, x, y)),
       takeOut: (id) => act((s) => setParent(s, id, null)),
-      edit: (id, text) => act((s) => editCard(s, id, text)),
+      finishEdit: (id, text) => {
+        const isFresh = fresh.current === id;
+        if (isFresh) fresh.current = null;
+        const final = text ?? current.current.map.cards.find((c) => c.id === id)?.text ?? "";
+        // Undo the "+ Card" step rather than delete, so no extra undo step is left behind.
+        if (isFresh && !final.trim()) act(undo);
+        else if (text !== null) act((s) => editCard(s, id, text));
+      },
       remove: (id) => act((s) => deleteCard(s, id)),
       link: (from, to) => {
         if (busyRef.current) return;
@@ -88,6 +97,10 @@ export function App() {
     try {
       const done = await runTurn(current.current, text, { callModel: callResponses, onUpdate: setSession });
       setSession(done);
+    } catch (error) {
+      // runTurn reports its own errors; this only catches a failure outside it.
+      const note = `Something went wrong: ${error instanceof Error ? error.message : String(error)}`;
+      setSession((s) => ({ ...s, transcript: [...s.transcript, { kind: "notice", text: note }] }));
     } finally {
       setBusy(false);
     }
@@ -100,6 +113,7 @@ export function App() {
     (document.activeElement as HTMLElement | null)?.blur();
     const id = `c${current.current.counters.card + 1}`;
     act((s) => addCard(s, ""));
+    fresh.current = id;
     setEditId(id);
   };
 

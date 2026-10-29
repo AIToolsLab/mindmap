@@ -109,6 +109,15 @@ export interface Settings {
   suggestionAdoption: boolean;
 }
 
+/**
+ * One undo step: the map, plus each proposal's state at that moment, so undoing an
+ * Accept also makes that proposal pending again.
+ */
+export interface UndoEntry {
+  map: MapState;
+  proposals: Pick<Proposal, "id" | "status" | "note">[];
+}
+
 export interface Session {
   level: Level;
   settings: Settings;
@@ -120,8 +129,8 @@ export interface Session {
   /** Writer decisions on proposals the model hasn't been told about yet. */
   decisions: string[];
   counters: { card: number; link: number; proposal: number; turn: number };
-  /** Map snapshots for undo, newest last. */
-  undo: MapState[];
+  /** Undo steps, newest last. */
+  undo: UndoEntry[];
 }
 
 export function emptySession(): Session {

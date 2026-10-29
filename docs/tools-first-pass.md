@@ -36,7 +36,7 @@ the rules are stated, and enforced only when an action executes.
 | Visibility | Every tool call shows in the chat with its result. Refusals show a reason the writer can expand. |
 | Refusals | Say truthfully what failed. They don't tell the model what to do instead. |
 | Attempt budget | At most 3 refused attempts per turn. The count is in every refusal. After the third, tools are removed and the model replies in text only. |
-| `suggest_idea` below L2 | Offered, always refused, so the model learns the boundary and draws the idea out of the writer instead. |
+| `suggest_idea` below L2 | Offered, always refused, so the model learns the boundary and draws the idea out of the writer instead. The instructions and the tool description also say up front that it is refused (Nhyira, 10-28): the prompt tells the model it won't work, so it doesn't waste an attempt, and the handler's refusal stays as the real check in case it tries anyway or ignores the prompt. So the coach declining in words at L0 without trying the tool is expected. |
 | Memory between calls | None. Every call is stateless and sends everything (section 7), ordered so the provider's prompt cache covers the repeated part. No provider-side conversation storage. |
 | Suggestion adoption | Behind an on/off setting. Measured by shared runs of three or more words, not today's common-word list (see §9). The list is the fallback if runs prove problematic. |
 | Out of v1 | i18n, a restating tool, working memory, the fuzz harness (after v1), L3 (after v1), the Think/Map slider, steering buttons, voice, Control Room diagnostics, sign-in and deploy. |
@@ -65,7 +65,11 @@ provenance labels is a study-design question for later.
   messages are never in it.
 - **Map:** cards `{ id, text, parentId, provenance, sources }` and links
   `{ id, from, to, label, provenance }`. The writer can add, edit, drag, delete, nest and
-  undo directly; those are immediate (they are the writer's own actions).
+  undo directly; those are immediate (they are the writer's own actions). Once the
+  writer changes a quoted card's words, it drops its sources and its `From …` label
+  (the text is now their own edit); an AI suggestion keeps its label, and adoption
+  tracking covers it. Undo also restores proposal states, so undoing an Accept makes
+  that proposal pending again and the model is told. A `+ Card` left empty is removed.
 - **Proposals:** pending `{ id, kind: card | link | nest | suggestion, ... }`, each
   accepted or rejected by the writer. A link or nest that refers to a pending card is
   dropped if that card is rejected.

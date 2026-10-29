@@ -27,7 +27,9 @@ export function loadSession(storage: Storage | undefined = safeStorage()): Sessi
     const parsed: unknown = JSON.parse(raw);
     if (!looksLikeSession(parsed)) return emptySession();
     const fresh = emptySession();
-    return { ...fresh, ...parsed, settings: { ...fresh.settings, ...parsed.settings }, counters: { ...fresh.counters, ...parsed.counters } };
+    // Undo steps saved before they carried proposal states can't be replayed safely; drop them.
+    const undo = parsed.undo.every((u) => u && typeof u === "object" && "map" in u && Array.isArray(u.proposals)) ? parsed.undo : [];
+    return { ...fresh, ...parsed, undo, settings: { ...fresh.settings, ...parsed.settings }, counters: { ...fresh.counters, ...parsed.counters } };
   } catch {
     return emptySession();
   }

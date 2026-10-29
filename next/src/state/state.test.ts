@@ -110,3 +110,27 @@ describe("review fixes: nesting positions, marks and decisions", () => {
     expect(s.map.cards[0]?.sources).toEqual(sources);
   });
 });
+
+describe("review minors: undo after Accept, editing quoted cards", () => {
+  const card = (id: string, text: string): Proposal => ({ id, status: "pending", kind: "card", text, provenance: { kind: "combined", messages: 2 }, sources: [{ piece: text, from: "chat", turn: 1, allTurns: [1], inDraft: false }] });
+
+  it("undoing an Accept makes the proposal pending again, tells the model, and keeps later proposals", () => {
+    let s = acceptProposal(withProposals([card("p1", "A")]), "p1");
+    // A later turn added another proposal before the writer pressed Undo.
+    s = { ...s, proposals: [...s.proposals, card("p2", "B")], decisions: [] };
+    s = undo(s);
+    expect(s.map.cards).toHaveLength(0);
+    expect(s.proposals.map((p) => `${p.id}:${p.status}`)).toEqual(["p1:pending", "p2:pending"]);
+    expect(s.decisions).toEqual(['writer undid accepting p1 (card "A"); it is pending again']);
+  });
+
+  it("editing a quoted card drops its stale sources and From label; an AI suggestion keeps its label", () => {
+    let s = acceptProposal(withProposals([card("p1", "A")]), "p1");
+    s = editCard(s, "c1", "A, in my own words");
+    expect(s.map.cards[0]).toMatchObject({ text: "A, in my own words", provenance: { kind: "user" } });
+    expect(s.map.cards[0]?.sources).toBeUndefined();
+    s = { ...s, map: { ...s.map, cards: s.map.cards.map((c) => ({ ...c, provenance: { kind: "ai_suggested" as const } })) } };
+    s = editCard(s, "c1", "changed again");
+    expect(s.map.cards[0]?.provenance).toEqual({ kind: "ai_suggested" });
+  });
+});

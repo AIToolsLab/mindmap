@@ -127,3 +127,21 @@ describe("review fixes: declined list, history trimming, budget in one batch", (
     expect(last).toMatchObject({ ok: false, reason: "No attempts left this turn; reply in words." });
   });
 });
+
+describe("review minors: errors mid-turn", () => {
+  it("reports an unexpected error in the chat and still keeps the turn in history", async () => {
+    const { model } = fake([[call("a", "propose_card", { pieces: ["I like X"] })], [say("ok")]]);
+    let updates = 0;
+    const s = await runTurn(start(["I like X"]), "hi", {
+      callModel: model,
+      onUpdate: () => {
+        if (++updates === 2) throw new Error("render failed"); // after the first tool result
+      },
+    });
+    expect(s.transcript.at(-1)).toEqual({ kind: "notice", text: "Something went wrong in this turn: render failed" });
+    expect(s.history[0]).toEqual({ role: "user", content: "hi" });
+    const calls = s.history.filter((h) => "type" in h && h.type === "function_call").length;
+    const outputs = s.history.filter((h) => "type" in h && h.type === "function_call_output").length;
+    expect(outputs).toBe(calls);
+  });
+});

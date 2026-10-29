@@ -50,7 +50,8 @@ function placeUnder(map: MapState, child: string, parent: string | null, mark?: 
 }
 
 function withUndo(session: Session): Session {
-  return { ...session, undo: [...session.undo, session.map].slice(-UNDO_LIMIT) };
+  const entry = { map: session.map, proposals: session.proposals.map(({ id, status, note }) => ({ id, status, note })) };
+  return { ...session, undo: [...session.undo, entry].slice(-UNDO_LIMIT) };
 }
 
 export function findCard(map: MapState, id: string): Card | undefined {
@@ -91,9 +92,18 @@ export function addCard(session: Session, text: string): Session {
   return reconcileAdoption(next, new Set([id]));
 }
 
+/**
+ * The writer's edit. Once the words change they are the writer's own, so a card quoted
+ * from messages or the draft drops those sources and its "From …" label. An AI
+ * suggestion keeps its label; adoption tracking (below) handles that influence.
+ */
 export function editCard(session: Session, id: string, text: string): Session {
   const s = withUndo(session);
-  const cards = s.map.cards.map((c) => (c.id === id ? { ...c, text } : c));
+  const cards = s.map.cards.map((c) => {
+    if (c.id !== id || c.text === text) return c;
+    const { sources: _stale, ...rest } = c;
+    return { ...rest, text, provenance: c.provenance.kind === "ai_suggested" ? c.provenance : { kind: "user" as const } };
+  });
   return reconcileAdoption({ ...s, map: { ...s.map, cards } }, new Set([id]));
 }
 
@@ -138,10 +148,23 @@ export function deleteLink(session: Session, id: string): Session {
   return { ...s, map: { ...s.map, links: s.map.links.filter((l) => l.id !== id) } };
 }
 
+/**
+ * Undo the writer's last map change. Proposal states come back too, but only for
+ * proposals that existed then: ones the coach made later stay. If an Accept is undone,
+ * the model is told, since it may already have heard "accepted".
+ */
 export function undo(session: Session): Session {
   const prev = session.undo[session.undo.length - 1];
   if (!prev) return session;
-  return { ...session, map: prev, undo: session.undo.slice(0, -1) };
+  const before = new Map(prev.proposals.map((p) => [p.id, p]));
+  const undone: string[] = [];
+  const proposals = session.proposals.map((p) => {
+    const was = before.get(p.id);
+    if (!was || (was.status === p.status && was.note === p.note)) return p;
+    if (p.status === "accepted") undone.push(`writer undid accepting ${p.id} (${describe(p)}); it is pending again`);
+    return { ...p, status: was.status, note: was.note } as Proposal;
+  });
+  return { ...session, map: prev.map, proposals, undo: session.undo.slice(0, -1), decisions: [...session.decisions, ...undone] };
 }
 
 // ---- Proposals: only the writer's click changes the map ----

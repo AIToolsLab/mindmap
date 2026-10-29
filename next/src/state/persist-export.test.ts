@@ -72,3 +72,10 @@ describe("proposal labels in the chat", () => {
     expect(proposalLabel({ ...base, kind: "nest", child: "c1", parent: "c2", provenance: { kind: "user" } })).toBeNull();
   });
 });
+
+describe("saved undo steps from before proposal states were kept", () => {
+  it("are dropped on load instead of being replayed", () => {
+    const old = { ...emptySession(), undo: [{ cards: [], links: [] }] };
+    expect(loadSession(memoryStorage({ [STORAGE_KEY]: JSON.stringify(old) })).undo).toEqual([]);
+  });
+});
