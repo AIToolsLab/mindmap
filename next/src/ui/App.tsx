@@ -42,7 +42,9 @@ export function App() {
   const busyRef = useRef(busy);
   busyRef.current = busy;
 
-  useEffect(() => setSaved(saveSession(session)), [session]);
+  useEffect(() => {
+    setSaved(saveSession(session));
+  }, [session]);
 
   useEffect(() => {
     if (!flash) return;

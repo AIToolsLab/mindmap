@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { proposalLabel } from "../state/labels";
 import { blockedReason } from "../state/map";
 import type { Proposal, Session, TranscriptItem } from "../state/types";
 
@@ -20,11 +21,13 @@ const STATUS: Record<Exclude<Proposal["status"], "pending">, string> = {
 function ToolLine({ item, session, busy, onAccept, onReject }: { item: Extract<TranscriptItem, { kind: "tool" }> } & Omit<Props, "onSend">) {
   const proposal = item.proposalId ? session.proposals.find((p) => p.id === item.proposalId) : undefined;
   const blocked = proposal?.status === "pending" ? blockedReason(session, proposal) : undefined;
+  const label = proposal ? proposalLabel(proposal) : null;
   return (
     <div className={`tool-line ${item.ok ? "tool-ok" : "tool-refused"}`}>
       <span className="tool-mark" aria-hidden>{item.ok ? "✓" : "✕"}</span>
       <span className="tool-name">{item.name}</span>
       <span className="tool-summary">· {item.ok ? item.summary : "refused"}</span>
+      {label && <span className="badge">{label}</span>}
       {item.ok && proposal?.status === "pending" && (
         <span className="tool-buttons">
           <button type="button" className="accept" disabled={busy || !!blocked} title={blocked} onClick={() => onAccept(proposal.id)}>

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { mapToMarkdown } from "./export";
+import { proposalLabel } from "./labels";
 import { loadSession, saveSession, STORAGE_KEY } from "./persist";
 import { emptySession, type MapState } from "./types";
 
@@ -57,5 +58,17 @@ describe("copy map", () => {
       "",
       "- Money → outweighs → Time _(AI suggested)_",
     ].join("\n"));
+  });
+});
+
+describe("proposal labels in the chat", () => {
+  it("shows the label the proposal will carry on the map", () => {
+    const base = { id: "p1", status: "pending" as const };
+    expect(proposalLabel({ ...base, kind: "card", text: "A", provenance: { kind: "combined", messages: 2 }, sources: [] })).toBe("From 2 messages");
+    expect(proposalLabel({ ...base, kind: "card", text: "A", provenance: { kind: "draft" }, sources: [] })).toBe("From your draft");
+    expect(proposalLabel({ ...base, kind: "card", text: "A", provenance: { kind: "user" }, sources: [] })).toBeNull();
+    expect(proposalLabel({ ...base, kind: "suggestion", text: "B", nearCard: null })).toBe("AI suggestion");
+    expect(proposalLabel({ ...base, kind: "link", from: "c1", to: "c2", label: "so", provenance: { kind: "ai_suggested" } })).toBe("AI suggested");
+    expect(proposalLabel({ ...base, kind: "nest", child: "c1", parent: "c2", provenance: { kind: "user" } })).toBeNull();
   });
 });

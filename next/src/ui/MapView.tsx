@@ -63,8 +63,13 @@ export function MapView({ map, readOnly, editId, setEditId, actions }: Props) {
     [readOnly, setEditId, actions],
   );
 
-  useEffect(() => setNodes((prev) => buildNodes(map, prev, editId, callbacks)), [map, editId, callbacks]);
-  useEffect(() => setEdges((prev) => buildEdges(map, prev)), [map]);
+  // Effects must return nothing or a cleanup, so no braceless arrows here (see 3b3a0e0).
+  useEffect(() => {
+    setNodes((prev) => buildNodes(map, prev, editId, callbacks));
+  }, [map, editId, callbacks]);
+  useEffect(() => {
+    setEdges((prev) => buildEdges(map, prev));
+  }, [map]);
 
   // Measurements and drag positions live here until a drag ends; then the map is updated.
   const onNodesChange = useCallback((changes: NodeChange<CardFlowNode>[]) => {
