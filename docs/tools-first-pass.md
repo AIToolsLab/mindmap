@@ -38,7 +38,7 @@ the rules are stated, and enforced only when an action executes.
 | Attempt budget | At most 3 refused attempts per turn. The count is in every refusal. After the third, tools are removed and the model replies in text only. |
 | `suggest_idea` below L2 | Offered, always refused, so the model learns the boundary and draws the idea out of the writer instead. |
 | Memory between calls | None. Every call is stateless and sends everything (section 7), ordered so the provider's prompt cache covers the repeated part. No provider-side conversation storage. |
-| Suggestion adoption | Kept as it works today, behind an on/off setting. |
+| Suggestion adoption | Behind an on/off setting. Measured by shared runs of three or more words, not today's common-word list (see §9). The list is the fallback if runs prove problematic. |
 | Out of v1 | i18n, a restating tool, working memory, the fuzz harness (after v1), L3 (after v1), the Think/Map slider, steering buttons, voice, Control Room diagnostics, sign-in and deploy. |
 
 ## 3. Levels
@@ -225,8 +225,12 @@ Keep it simple: no extra panels or diagnostics in v1.
 1. **Core loop with plain UI:** chat, writer record, the four tools and handlers, the
    budget, proposals with accept and reject, the map with direct editing and undo, level
    picker, draft panel, browser saving, copy out.
-2. **Suggestion adoption** ported from `src/map/suggestion-adoption.ts`, behind its
-   setting.
+2. **Suggestion adoption** behind its setting: a card the writer creates or edits is
+   adopted from an L2 suggestion when at least half its words sit in runs of three or
+   more words, in order, shared with that suggestion (shorter cards: the whole card
+   must appear). Only a card whose text just changed can newly adopt; later edits
+   update current and peak overlap. Same behaviour as `src/map/suggestion-adoption.ts`
+   except the overlap measure, which uses no word list.
 3. **Tests for every handler rule** in sections 5.1–5.4, including each refusal reason,
    adjacency, label position, cycles, the budget and the 8-call cap.
 4. **Try it in real conversations** at each level, including the "I like X… because X

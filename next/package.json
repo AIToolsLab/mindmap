@@ -1,0 +1,26 @@
+{
+  "name": "mindmap-next",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "description": "Tools-first Mindmap experiment: the coach reasons freely; its map actions are checked inside tool handlers when they execute. See ../docs/tools-first-pass.md.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@xyflow/react": "^12.3.5",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.6.3",
+    "vite": "^6.0.3",
+    "vitest": "^3.2.4"
+  }
+}
