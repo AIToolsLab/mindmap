@@ -7,9 +7,9 @@ export const proposeNest: Tool = {
   name: "propose_nest",
   description: (level) =>
     [
-      "Propose putting one card under another (child under parent). Cards are referred to by id: an existing card (c3) or a card you proposed this turn (p5).",
+      "Propose putting one card under another (child under parent). Cards are referred to by id: an existing card (c3) or a card proposal still waiting for the writer (p5).",
       level === 2
-        ? "At this level you may propose nesting freely. `evidence` may be empty."
+        ? "At this level you may propose nesting freely; it is shown as AI suggested. `evidence` may be empty."
         : "At this level the writer must have stated it themselves. `evidence` is one piece of the writer's words, or two pieces from two of their messages next to each other, and both cards' text must appear in it.",
     ].join(" "),
   parameters: {
@@ -40,11 +40,16 @@ export const proposeNest: Tool = {
       return refuse("That nesting is already proposed.", summary);
     }
 
-    if (ctx.level !== 2 && ctx.checks) {
+    const free = ctx.level === 2 || !ctx.checks;
+    if (!free) {
       const reason = checkEvidence(evidence, { fromText: childText, toText: parentText }, null, ctx.session.record, ctx.level);
       if (reason) return refuse(reason, summary);
     }
 
-    return { ok: true, summary, proposal: { id: ctx.nextProposalId(), status: "pending", kind: "nest", child, parent } };
+    return {
+      ok: true,
+      summary,
+      proposal: { id: ctx.nextProposalId(), status: "pending", kind: "nest", child, parent, provenance: free ? { kind: "ai_suggested" } : { kind: "user" } },
+    };
   },
 };

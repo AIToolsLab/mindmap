@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { emptySession, type Session } from "../state/types";
+import { emptySession, type HistoryItem, type Session } from "../state/types";
+import { visibleHistory } from "./context";
 import type { ModelCall, ModelRequest } from "./client";
 import { MAX_CALLS, runTurn } from "./turn";
 
@@ -85,5 +86,44 @@ describe("runTurn", () => {
   it("shows a notice when the backend can't be reached", async () => {
     const s = await runTurn(start(), "x", { callModel: async () => { throw new Error("Backend 401: nope"); } });
     expect(s.transcript.at(-1)).toEqual({ kind: "notice", text: "Couldn't reach the coach: Backend 401: nope" });
+  });
+});
+
+describe("review fixes: declined list, history trimming, budget in one batch", () => {
+  it("keeps what the writer declined in every later state block, not just the next one", async () => {
+    let s = start();
+    s = { ...s, proposals: [{ id: "p1", status: "rejected", kind: "card", text: "X is bad", provenance: { kind: "user" }, sources: [] }], counters: { ...s.counters, proposal: 1 } };
+    const first = fake([[say("ok")]]);
+    s = await runTurn(s, "hi", { callModel: first.model });
+    const second = fake([[say("ok")]]);
+    await runTurn(s, "again", { callModel: second.model });
+    const stateOf = (r: ModelRequest) => (r.input as { role?: string; content?: string }[]).find((i) => i.role === "developer")!.content!;
+    expect(stateOf(second.requests[0]!)).toContain('Declined by the writer earlier');
+    expect(stateOf(second.requests[0]!)).toContain('p1 card "X is bad"');
+  });
+
+  it("shows the model only recent turns, never splitting a tool call from its result", () => {
+    const history: HistoryItem[] = [];
+    for (let t = 1; t <= 45; t++) {
+      history.push({ role: "user", content: `m${t}` });
+      history.push({ type: "function_call", call_id: `c${t}`, name: "propose_card", arguments: "{}" });
+      history.push({ type: "function_call_output", call_id: `c${t}`, output: "{}" });
+      history.push({ role: "assistant", content: `r${t}` });
+    }
+    const seen = visibleHistory(history, 40);
+    expect(seen.hidden).toBe(5);
+    expect(seen.items[0]).toEqual({ role: "user", content: "m6" });
+    const calls = seen.items.filter((h) => "type" in h && h.type === "function_call").length;
+    const outputs = seen.items.filter((h) => "type" in h && h.type === "function_call_output").length;
+    expect(calls).toBe(outputs);
+  });
+
+  it("refuses calls past the budget in the same batch without running them", async () => {
+    const bad = (id: string) => call(id, "suggest_idea", { text: "idea", near_card: null });
+    const { model } = fake([[bad("a"), bad("b"), bad("c"), call("d", "propose_card", { pieces: ["I like X"] })], [say("ok")]]);
+    const s = await runTurn(start(["I like X"]), "hi", { callModel: model });
+    expect(s.proposals).toHaveLength(0); // the fourth call came after the budget was spent
+    const last = s.transcript.filter((t) => t.kind === "tool").at(-1);
+    expect(last).toMatchObject({ ok: false, reason: "No attempts left this turn; reply in words." });
   });
 });

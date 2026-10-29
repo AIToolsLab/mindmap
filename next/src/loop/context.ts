@@ -1,4 +1,5 @@
-import type { Card, Level, Proposal, Session } from "../state/types";
+import { cardSourceForModel, structureLabel } from "../state/labels";
+import type { HistoryItem, Level, Proposal, Session } from "../state/types";
 
 /**
  * What the model sees on every call (spec §7). Stateless: everything is sent each
@@ -44,12 +45,19 @@ export function instructions(level: Level): string {
   ].join("\n");
 }
 
-function provenanceLabel(card: Pick<Card, "provenance">): string {
-  const p = card.provenance;
-  if (p.kind === "combined") return `from ${p.messages} messages`;
-  if (p.kind === "draft") return "from draft";
-  if (p.kind === "ai_suggested") return "AI suggestion";
-  return "writer";
+/** How many recent writer turns the model sees (spec §7.3). The writer record keeps all of them. */
+export const TURNS_SEEN = 40;
+
+/**
+ * The part of the conversation the model sees: the last `TURNS_SEEN` writer turns.
+ * Cuts only where a writer message starts, so a tool call is never separated from its
+ * result. `hidden` counts the writer messages left out.
+ */
+export function visibleHistory(history: HistoryItem[], turnsSeen = TURNS_SEEN): { items: HistoryItem[]; hidden: number } {
+  const starts = history.flatMap((h, i) => ("role" in h && h.role === "user" ? [i] : []));
+  if (starts.length <= turnsSeen) return { items: history, hidden: 0 };
+  const cut = starts[starts.length - turnsSeen]!;
+  return { items: history.slice(cut), hidden: starts.length - turnsSeen };
 }
 
 function proposalLine(p: Proposal): string {
@@ -60,12 +68,19 @@ function proposalLine(p: Proposal): string {
 }
 
 /** Part 4 of what the model sees: the current state, rebuilt every call. */
-export function stateBlock(session: Session, attemptsLeft: number): string {
-  const cards = session.map.cards.map((c) => `  ${c.id} "${c.text}"${c.parentId ? ` under ${c.parentId}` : ""} (${provenanceLabel(c)})`);
-  const links = session.map.links.map((l) => `  ${l.from} → "${l.label}" → ${l.to}${l.provenance.kind === "ai_suggested" ? " (AI suggested)" : ""}`);
+export function stateBlock(session: Session, attemptsLeft: number, hiddenMessages = 0): string {
+  const cards = session.map.cards.map((c) => {
+    const nest = c.parentId ? ` under ${c.parentId}${structureLabel(c.parentProvenance) ? " (nesting AI suggested)" : ""}` : "";
+    return `  ${c.id} "${c.text}"${nest} (${cardSourceForModel(c)})`;
+  });
+  const links = session.map.links.map((l) => `  ${l.from} → "${l.label}" → ${l.to}${structureLabel(l.provenance) ? " (AI suggested)" : ""}`);
   const pending = session.proposals.filter((p) => p.status === "pending").map((p) => `  ${proposalLine(p)}`);
+  // Kept for the whole session, so a declined idea isn't raised again (decisions below
+  // only cover the latest ones).
+  const declined = session.proposals.filter((p) => p.status === "rejected").map((p) => `  ${proposalLine(p)}`);
   return [
     "[Current state, rebuilt for this call. Not from the writer.]",
+    ...(hiddenMessages ? [`(${hiddenMessages} earlier writer messages are not shown above. Your tools can still quote them.)`] : []),
     "Map cards:",
     ...(cards.length ? cards : ["  (none)"]),
     "Map links:",
@@ -74,6 +89,8 @@ export function stateBlock(session: Session, attemptsLeft: number): string {
     ...(pending.length ? pending : ["  (none)"]),
     "Writer decisions since your last turn:",
     ...(session.decisions.length ? session.decisions.map((d) => `  ${d}`) : ["  (none)"]),
+    "Declined by the writer earlier (don't propose these again):",
+    ...(declined.length ? declined : ["  (none)"]),
     "Draft:",
     session.record.draft.trim() ? session.record.draft : "  (empty)",
     `Level: L${session.level} · refused attempts left this turn: ${attemptsLeft}`,

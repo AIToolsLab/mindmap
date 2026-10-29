@@ -178,3 +178,31 @@ describe("suggest_idea", () => {
     expect(r.ok && r.proposal.kind).toBe("suggestion");
   });
 });
+
+describe("review fixes: sources and nesting marks", () => {
+  it("records the most recent match and every match for each piece (spec §5.1)", () => {
+    const s = session(["I like X", "honestly I like X", "because X is bad"], { draft: "I like X a lot", level: 1 });
+    const r = run(proposeCard, { pieces: ["I like X", "X is bad"] }, s);
+    expect(r.ok && r.proposal.kind === "card" && r.proposal.sources).toEqual([
+      { piece: "I like X", from: "chat", turn: 2, allTurns: [2, 1], inDraft: true },
+      { piece: "X is bad", from: "chat", turn: 3, allTurns: [3], inDraft: false },
+    ]);
+  });
+
+  it("marks a nesting proposed at L2 as AI suggested, and keeps the mark once accepted", () => {
+    let s = session(["A and B"], { level: 2 });
+    s = { ...s, map: { cards: [{ id: "c1", text: "A", parentId: null, provenance: { kind: "user" }, x: 0, y: 0 }, { id: "c2", text: "B", parentId: null, provenance: { kind: "user" }, x: 300, y: 0 }], links: [] }, counters: { ...s.counters, card: 2 } };
+    const r = run(proposeNest, { child: "c2", parent: "c1", evidence: [] }, s);
+    expect(r.ok && r.proposal.kind === "nest" && r.proposal.provenance).toEqual({ kind: "ai_suggested" });
+    s = acceptProposal(apply(s, r), "p1");
+    expect(s.map.cards.find((c) => c.id === "c2")).toMatchObject({ parentId: "c1", parentProvenance: { kind: "ai_suggested" } });
+  });
+
+  it("a nesting the writer stated (L0) carries no AI mark", () => {
+    let s = session(["B is part of A"]);
+    s = { ...s, map: { cards: [{ id: "c1", text: "A", parentId: null, provenance: { kind: "user" }, x: 0, y: 0 }, { id: "c2", text: "B", parentId: null, provenance: { kind: "user" }, x: 300, y: 0 }], links: [] }, counters: { ...s.counters, card: 2 } };
+    const r = run(proposeNest, { child: "c2", parent: "c1", evidence: ["B is part of A"] }, s);
+    s = acceptProposal(apply(s, r), "p1");
+    expect(s.map.cards.find((c) => c.id === "c2")?.parentProvenance).toBeUndefined();
+  });
+});

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { runOverlap } from "./adoption";
-import { acceptProposal, addCard, addLink, deleteCard, editCard, rejectProposal, setParent, undo } from "./map";
+import { absolutePosition, acceptProposal, addCard, addLink, deleteCard, editCard, rejectProposal, setParent, undo } from "./map";
 import { emptySession, type Proposal, type Session } from "./types";
 
 function withProposals(proposals: Proposal[]): Session {
@@ -8,7 +8,7 @@ function withProposals(proposals: Proposal[]): Session {
 }
 
 describe("proposals", () => {
-  const card = (id: string, text: string): Proposal => ({ id, status: "pending", kind: "card", text, provenance: { kind: "user" } });
+  const card = (id: string, text: string): Proposal => ({ id, status: "pending", kind: "card", text, provenance: { kind: "user" }, sources: [] });
 
   it("accepting a card puts it on the map; a link to it can then be accepted", () => {
     let s = withProposals([card("p1", "A"), card("p2", "B"), { id: "p3", status: "pending", kind: "link", from: "p1", to: "p2", label: "so", provenance: { kind: "user" } }]);
@@ -20,7 +20,7 @@ describe("proposals", () => {
   });
 
   it("rejecting a card drops the link and nest proposals that named it", () => {
-    let s = withProposals([card("p1", "A"), { id: "p2", status: "pending", kind: "nest", child: "p1", parent: "c9" }]);
+    let s = withProposals([card("p1", "A"), { id: "p2", status: "pending", kind: "nest", child: "p1", parent: "c9", provenance: { kind: "user" } }]);
     s = rejectProposal(s, "p1");
     expect(s.proposals.map((p) => p.status)).toEqual(["rejected", "dropped"]);
   });
@@ -65,5 +65,48 @@ describe("suggestion adoption (three-word runs)", () => {
     const base = withProposals([{ id: "p1", status: "pending", kind: "suggestion", text: "the real topic is flaws", nearCard: null }]);
     const s = addCard({ ...base, settings: { suggestionAdoption: false } }, "the real topic is flaws");
     expect(s.map.cards[0]?.provenance).toEqual({ kind: "user" });
+  });
+});
+
+describe("review fixes: nesting positions, marks and decisions", () => {
+  const base = (): Session => ({
+    ...emptySession(),
+    map: { cards: [{ id: "c1", text: "A", parentId: null, provenance: { kind: "user" }, x: 100, y: 50 }, { id: "c2", text: "B", parentId: null, provenance: { kind: "user" }, x: 500, y: 50 }], links: [] },
+    counters: { card: 2, link: 0, proposal: 0, turn: 0 },
+  });
+
+  it("nesting places the child inside the parent; taking it out puts it beside the parent", () => {
+    let s = setParent(base(), "c2", "c1");
+    const child = s.map.cards.find((c) => c.id === "c2")!;
+    expect(child.parentId).toBe("c1");
+    expect(absolutePosition(s.map, "c2")).toEqual({ x: 100 + child.x, y: 50 + child.y });
+    s = setParent(s, "c2", null);
+    const out = s.map.cards.find((c) => c.id === "c2")!;
+    expect(out.parentId).toBeNull();
+    expect(out.x).toBeGreaterThan(100 + 200); // to the right of the old parent, not inside it
+  });
+
+  it("the writer re-nesting a card clears an AI-suggested mark", () => {
+    let s = base();
+    s = { ...s, map: { ...s.map, cards: s.map.cards.map((c) => (c.id === "c2" ? { ...c, parentId: "c1", parentProvenance: { kind: "ai_suggested" as const }, x: 16, y: 48 } : c)) } };
+    s = setParent(s, "c2", null);
+    expect(s.map.cards.find((c) => c.id === "c2")?.parentProvenance).toBeUndefined();
+  });
+
+  it("deleting a parent keeps its children where they were on the canvas", () => {
+    let s = setParent(base(), "c2", "c1");
+    const before = absolutePosition(s.map, "c2");
+    s = deleteCard(s, "c1");
+    const child = s.map.cards.find((c) => c.id === "c2")!;
+    expect(child.parentId).toBeNull();
+    expect({ x: child.x, y: child.y }).toEqual(before);
+  });
+
+  it("an accepted card proposal tells the model which card it became, and keeps its sources", () => {
+    const sources = [{ piece: "A", from: "chat" as const, turn: 1, allTurns: [1], inDraft: false }];
+    let s = withProposals([{ id: "p1", status: "pending", kind: "card", text: "A", provenance: { kind: "user" }, sources }]);
+    s = acceptProposal(s, "p1");
+    expect(s.decisions).toEqual(['accepted p1 (card "A"), now card c1']);
+    expect(s.map.cards[0]?.sources).toEqual(sources);
   });
 });

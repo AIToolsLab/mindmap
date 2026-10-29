@@ -7,7 +7,7 @@ export const proposeLink: Tool = {
   name: "propose_link",
   description: (level) =>
     [
-      "Propose a labelled link from one card to another. Cards are referred to by id: an existing card (c3) or a card you proposed this turn (p5).",
+      "Propose a labelled link from one card to another. Cards are referred to by id: an existing card (c3) or a card proposal still waiting for the writer (p5).",
       level === 2
         ? "At this level you may propose links freely; the label is your choice and the link is shown as AI suggested. `evidence` may be empty."
         : "At this level the writer must have stated the link themselves. `evidence` is one piece of the writer's words, or two pieces from two of their messages next to each other. Both cards' text must appear in the evidence, and the label must be words from the evidence that sit after the `from` card and before the `to` card.",

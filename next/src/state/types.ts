@@ -23,6 +23,25 @@ export type Provenance =
   | { kind: "draft" }
   | { kind: "ai_suggested" };
 
+/** Mark for model-made structure (a link, or a nesting) the writer accepted at L2. */
+export type StructureProvenance = { kind: "user" } | { kind: "ai_suggested" };
+
+/**
+ * Where one piece of a card's text was found (spec §5.1): the most recent match, and
+ * every match. Recorded by the handler, never passed by the model.
+ */
+export interface PieceSource {
+  piece: string;
+  /** Where the most recent match is: chat wins over the draft. */
+  from: "chat" | "draft";
+  /** Turn of the most recent chat match, or null when the piece is only in the draft. */
+  turn: number | null;
+  /** Every writer turn whose message contains the piece, most recent first. */
+  allTurns: number[];
+  /** Whether the current draft also contains it (L1 and L2 only). */
+  inDraft: boolean;
+}
+
 export interface AdoptionTrace {
   /** Suggestion proposal whose wording this card took on (the original influence). */
   adoptedFrom: string;
@@ -34,7 +53,12 @@ export interface Card {
   id: string;
   text: string;
   parentId: string | null;
+  /** Set when the coach proposed this card's current nesting (L2) and the writer accepted it. */
+  parentProvenance?: StructureProvenance;
   provenance: Provenance;
+  /** Where the card's words came from, for cards proposed from the writer's words. */
+  sources?: PieceSource[];
+  /** Position, relative to the parent card when nested. */
   x: number;
   y: number;
   adoption?: AdoptionTrace;
@@ -45,7 +69,7 @@ export interface Link {
   from: string;
   to: string;
   label: string;
-  provenance: { kind: "user" } | { kind: "ai_suggested" };
+  provenance: StructureProvenance;
 }
 
 export interface MapState {
@@ -63,9 +87,9 @@ interface ProposalBase {
 }
 
 export type Proposal =
-  | (ProposalBase & { kind: "card"; text: string; provenance: Provenance; cardId?: string })
-  | (ProposalBase & { kind: "link"; from: string; to: string; label: string; provenance: Link["provenance"] })
-  | (ProposalBase & { kind: "nest"; child: string; parent: string })
+  | (ProposalBase & { kind: "card"; text: string; provenance: Provenance; sources: PieceSource[]; cardId?: string })
+  | (ProposalBase & { kind: "link"; from: string; to: string; label: string; provenance: StructureProvenance })
+  | (ProposalBase & { kind: "nest"; child: string; parent: string; provenance: StructureProvenance })
   | (ProposalBase & { kind: "suggestion"; text: string; nearCard: string | null; cardId?: string });
 
 /** What the chat shows. Tool lines are part of the transcript, refusals included. */

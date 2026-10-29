@@ -1,12 +1,52 @@
 import { reconcileAdoption } from "./adoption";
-import type { Card, Link, MapState, Proposal, Session } from "./types";
+import type { Card, Link, MapState, Proposal, Session, StructureProvenance } from "./types";
 
 const UNDO_LIMIT = 50;
 
-/** Next free spot in a simple grid, so new cards don't stack on each other. */
+/** Next free spot for a top-level card in a simple grid, so new cards don't stack. */
 function nextPosition(map: MapState): { x: number; y: number } {
-  const n = map.cards.length;
-  return { x: 40 + (n % 3) * 260, y: 40 + Math.floor(n / 3) * 140 };
+  const n = map.cards.filter((c) => !c.parentId).length;
+  return { x: 40 + (n % 3) * 300, y: 40 + Math.floor(n / 3) * 180 };
+}
+
+/** A card's position on the canvas: its own offset plus every ancestor's. */
+export function absolutePosition(map: MapState, id: string): { x: number; y: number } {
+  let x = 0;
+  let y = 0;
+  const seen = new Set<string>();
+  let at = findCard(map, id);
+  while (at && !seen.has(at.id)) {
+    seen.add(at.id);
+    x += at.x;
+    y += at.y;
+    at = at.parentId ? findCard(map, at.parentId) : undefined;
+  }
+  return { x, y };
+}
+
+// Where a newly nested card sits inside its parent (positions are parent-relative).
+const CHILD_LEFT = 16;
+const CHILD_TOP = 48;
+const CHILD_STEP = 110;
+
+/**
+ * Re-parent a card and place it: inside the parent below its existing children, or,
+ * when taken out, just to the right of where it was so it doesn't sit inside the old
+ * parent's box. Positions only; callers check for cycles.
+ */
+function placeUnder(map: MapState, child: string, parent: string | null, mark?: StructureProvenance): MapState {
+  const card = findCard(map, child);
+  if (!card) return map;
+  let next: Card;
+  if (parent) {
+    const siblings = map.cards.filter((c) => c.parentId === parent && c.id !== child).length;
+    next = { ...card, parentId: parent, x: CHILD_LEFT, y: CHILD_TOP + siblings * CHILD_STEP, parentProvenance: mark?.kind === "ai_suggested" ? mark : undefined };
+  } else {
+    const abs = absolutePosition(map, child);
+    const out = card.parentId ? absolutePosition(map, card.parentId) : abs;
+    next = { ...card, parentId: null, x: Math.max(abs.x, out.x) + 320, y: abs.y, parentProvenance: undefined };
+  }
+  return { ...map, cards: map.cards.map((c) => (c.id === child ? next : c)) };
 }
 
 function withUndo(session: Session): Session {
@@ -64,15 +104,21 @@ export function moveCard(session: Session, id: string, x: number, y: number): Se
 
 export function deleteCard(session: Session, id: string): Session {
   const s = withUndo(session);
-  const cards = s.map.cards.filter((c) => c.id !== id).map((c) => (c.parentId === id ? { ...c, parentId: null } : c));
+  // Children move up to the top level and keep their place on the canvas.
+  const cards = s.map.cards
+    .filter((c) => c.id !== id)
+    .map((c) => (c.parentId === id ? { ...c, parentId: null, parentProvenance: undefined, ...absolutePosition(s.map, c.id) } : c));
   const links = s.map.links.filter((l) => l.from !== id && l.to !== id);
   return { ...s, map: { cards, links } };
 }
 
+/** The writer's own nesting (or un-nesting with `null`). Clears any AI-suggested mark. */
 export function setParent(session: Session, child: string, parent: string | null): Session {
-  if (parent && (child === parent || wouldCycle(session.map, child, parent))) return session;
+  const card = findCard(session.map, child);
+  if (!card || card.parentId === parent) return session;
+  if (parent && (child === parent || !findCard(session.map, parent) || wouldCycle(session.map, child, parent))) return session;
   const s = withUndo(session);
-  return { ...s, map: { ...s.map, cards: s.map.cards.map((c) => (c.id === child ? { ...c, parentId: parent } : c)) } };
+  return { ...s, map: placeUnder(s.map, child, parent) };
 }
 
 export function addLink(session: Session, from: string, to: string, label: string): Session {
@@ -140,6 +186,7 @@ export function acceptProposal(session: Session, id: string): Session {
       text: p.text,
       parentId: null,
       provenance: p.kind === "card" ? p.provenance : { kind: "ai_suggested" },
+      ...(p.kind === "card" && p.sources.length ? { sources: p.sources } : {}),
       ...nextPosition(s.map),
     };
     s = {
@@ -158,10 +205,13 @@ export function acceptProposal(session: Session, id: string): Session {
     const child = resolve(s, p.child)!;
     const parent = resolve(s, p.parent)!;
     if (child === parent || wouldCycle(s.map, child, parent)) return setStatus(session, id, "dropped", "The map has changed so this nesting would make a loop.");
-    s = { ...s, map: { ...s.map, cards: s.map.cards.map((c) => (c.id === child ? { ...c, parentId: parent } : c)) } };
+    s = { ...s, map: placeUnder(s.map, child, parent, p.provenance) };
   }
   s = setStatus(s, id, "accepted");
-  return { ...s, decisions: [...s.decisions, `accepted ${p.id} (${describe(p)})`] };
+  // Name the card a card proposal became, so the model can refer to it next turn.
+  const after = s.proposals.find((x) => x.id === p.id);
+  const became = after && (after.kind === "card" || after.kind === "suggestion") ? after.cardId : undefined;
+  return { ...s, decisions: [...s.decisions, `accepted ${p.id} (${describe(p)})${became ? `, now card ${became}` : ""}`] };
 }
 
 export function rejectProposal(session: Session, id: string): Session {

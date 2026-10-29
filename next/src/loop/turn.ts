@@ -2,7 +2,7 @@ import type { HistoryItem, Session } from "../state/types";
 import { refuse, type HandlerResult } from "../tools/common";
 import { toolByName, toolDefinitions } from "../tools";
 import type { ModelCall } from "./client";
-import { ATTEMPT_BUDGET, instructions, stateBlock } from "./context";
+import { ATTEMPT_BUDGET, instructions, stateBlock, visibleHistory } from "./context";
 
 /** Safety cap (spec §6): a turn never makes more model calls than this, whatever happens. */
 export const MAX_CALLS = 8;
@@ -68,13 +68,15 @@ export async function runTurn(start: Session, writerText: string, deps: TurnDeps
   let calls = 0;
   let finished = false;
 
+  const seen = visibleHistory(s.history);
   while (calls < MAX_CALLS) {
     const toolsOn = attemptsLeft > 0;
     let output: unknown[];
     try {
       output = await deps.callModel({
         instructions: instructions(level),
-        input: [...s.history, { role: "user", content: stateBlock(s, attemptsLeft) }, writerItem, ...turnItems],
+        // The state block is a developer message: it comes from the app, not the writer.
+        input: [...seen.items, { role: "developer", content: stateBlock(s, attemptsLeft, seen.hidden) }, writerItem, ...turnItems],
         tools: toolDefinitions(level),
         toolChoice: toolsOn ? "auto" : "none",
       });
@@ -101,7 +103,9 @@ export async function runTurn(start: Session, writerText: string, deps: TurnDeps
 
     for (const call of toolCalls) {
       kept.push({ type: "function_call", call_id: call.call_id, name: call.name, arguments: call.arguments });
-      const result = runTool(call, s, level, toolsOn, () => {
+      // Checked per call: once the budget is spent, later calls in the same batch are
+      // refused without running, so a batch can't exceed it.
+      const result = runTool(call, s, level, attemptsLeft > 0, () => {
         const id = `p${s.counters.proposal + 1}`;
         s = { ...s, counters: { ...s.counters, proposal: s.counters.proposal + 1 } };
         return id;

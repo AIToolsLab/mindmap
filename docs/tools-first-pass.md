@@ -90,7 +90,8 @@ lower-case, whitespace runs collapsed to one space, and straight/curly quotes tr
 alike. No other transformation.
 
 When a piece matches in more than one message, record the most recent match, and all
-matches.
+matches. Each accepted card keeps these `sources` (piece, most recent turn, every turn,
+whether the draft also has it).
 
 ### 5.1 `propose_card`
 
@@ -138,7 +139,8 @@ matches.
 
 - **Always:** both exist, differ, and nesting would not create a cycle.
 - **L0 and L1:** the same evidence rule as links, steps 1–3 (no label).
-- **L2:** no evidence needed.
+- **L2:** no evidence needed. An accepted L2 nesting keeps an `AI suggested` mark on the
+  child (like an L2 link) until the writer re-nests the card themselves.
 
 ### 5.4 `suggest_idea`
 
@@ -168,7 +170,9 @@ matches.
 2. Call the model with the full context (section 7) and the tools for this level.
 3. For each tool call: run the handler, create a proposal or a refusal, and append the
    call and its result to the turn.
-4. Refusals count against the budget. Each refusal includes `attempts_left`.
+4. Refusals count against the budget. Each refusal includes `attempts_left`. The budget is
+   checked per call, so once it is spent, any further calls in the same batch are refused
+   without running.
 5. Call the model again with the results, until it replies with text and no tool calls.
 6. When `attempts_left` reaches 0, the next call is made with `tool_choice: "none"`, so
    the reply is text only.
@@ -190,11 +194,16 @@ prompt cache covers it):
    and the fields.
 3. **The conversation so far:** writer messages, coach replies, and earlier tool calls
    with their results, refusals included. For very long chats, the oldest messages are
-   left out of what the model sees; the writer record keeps everything, so old quotes
-   still check.
+   left out of what the model sees (only the last 40 writer turns are sent, cut where a
+   writer message starts so a tool call is never separated from its result); the writer
+   record keeps everything, so old quotes still check, and the state block says how many
+   messages are hidden.
 4. **Current state, rebuilt each call:** the map (cards and links with IDs and short
    provenance), pending proposals, outcomes of the writer's decisions since the last
-   call ("accepted p3", "rejected p4"), the draft, and `level · attempts left`.
+   call ("accepted p3, now card c7", "rejected p4"), everything the writer has declined
+   so far (kept for the whole session, so a declined idea isn't raised again), the
+   draft, and `level · attempts left`. It is sent as a developer message, since it comes
+   from the app and not the writer.
 5. **The writer's new message.**
 
 API: OpenAI Responses through the Writing Tools proxy (`/api/openai/responses`), the

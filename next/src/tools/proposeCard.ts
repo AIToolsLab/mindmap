@@ -1,5 +1,5 @@
 import { eligibleSources, hasWords, norm, sourcesContaining } from "../state/match";
-import type { Provenance } from "../state/types";
+import type { PieceSource, Provenance } from "../state/types";
 import { quote, refuse, stringList, obj, whereFrom, type Tool } from "./common";
 
 /** Spec §5.1. The model writes the pieces; the handler checks each against the writer's words. */
@@ -30,10 +30,12 @@ export const proposeCard: Tool = {
 
     const turns = new Set<number>();
     let fromDraft = false;
+    const pieceSources: PieceSource[] = [];
     if (ctx.checks) {
       const sources = eligibleSources(ctx.session.record, ctx.level);
       for (const piece of pieces) {
-        const found = sourcesContaining(piece, sources)[0];
+        const all = sourcesContaining(piece, sources);
+        const found = all[0];
         if (!found) {
           const inDraft = ctx.level === 0 && sourcesContaining(piece, eligibleSources(ctx.session.record, 1)).some((s) => s.kind === "draft");
           return refuse(
@@ -45,6 +47,14 @@ export const proposeCard: Tool = {
         }
         if (found.kind === "draft") fromDraft = true;
         else turns.add(found.turn);
+        // Spec §5.1: record the most recent match, and every match.
+        pieceSources.push({
+          piece,
+          from: found.kind,
+          turn: found.kind === "chat" ? found.turn : null,
+          allTurns: [...new Set(all.filter((x) => x.kind === "chat").map((x) => x.turn))],
+          inDraft: all.some((x) => x.kind === "draft"),
+        });
       }
     }
 
@@ -55,6 +65,6 @@ export const proposeCard: Tool = {
     }
 
     const provenance: Provenance = fromDraft ? { kind: "draft" } : turns.size > 1 ? { kind: "combined", messages: turns.size } : { kind: "user" };
-    return { ok: true, summary, proposal: { id: ctx.nextProposalId(), status: "pending", kind: "card", text, provenance } };
+    return { ok: true, summary, proposal: { id: ctx.nextProposalId(), status: "pending", kind: "card", text, provenance, sources: pieceSources } };
   },
 };
