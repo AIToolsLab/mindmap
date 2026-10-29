@@ -57,7 +57,11 @@ function ToolLine({ item, session, busy, onAccept, onReject }: { item: Extract<T
 export function Chat({ session, busy, onSend, onAccept, onReject }: Props) {
   const [text, setText] = useState("");
   const end = useRef<HTMLDivElement>(null);
-  useEffect(() => end.current?.scrollIntoView({ block: "end" }), [session.transcript.length, busy]);
+  // Braces matter: scrollIntoView() returns a Promise in current Chrome, and an effect
+  // must return nothing or a cleanup function.
+  useEffect(() => {
+    end.current?.scrollIntoView({ block: "end" });
+  }, [session.transcript.length, busy]);
 
   const send = () => {
     if (busy || !text.trim()) return;
