@@ -1,6 +1,6 @@
-import { eligibleSources, findOnWordBoundary, hasWords, norm, sourcesContaining } from "../state/match";
+import { eligibleSources, enclosingWords, findOnWordBoundary, hasWords, norm, sourcesContaining } from "../state/match";
 import type { Level, WriterRecord } from "../state/types";
-import { quote, whereFrom } from "./common";
+import { notFoundReason, quote } from "./common";
 
 /**
  * The evidence rule for links and nesting at L0 and L1 (spec §5.2). Text comparisons
@@ -26,7 +26,7 @@ export function checkEvidence(
   const sources = eligibleSources(record, level);
   const found = evidence.map((piece) => sourcesContaining(piece, sources));
   for (let i = 0; i < evidence.length; i++) {
-    if (!found[i]!.length) return `${quote(evidence[i]!)} is not in ${whereFrom(level)}.`;
+    if (!found[i]!.length) return notFoundReason(evidence[i]!, level, enclosingWords(evidence[i]!, sources));
   }
 
   if (evidence.length === 2) {

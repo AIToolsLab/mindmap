@@ -40,6 +40,16 @@ export function whereFrom(level: Level): string {
   return level === 0 ? "your messages" : "your messages or draft";
 }
 
+/**
+ * Refusal for a piece that isn't in the eligible text on whole-word boundaries. Says
+ * so when the words are there but only inside longer words, so the model can retry.
+ */
+export function notFoundReason(piece: string, level: Level, inside: string | undefined): string {
+  return inside
+    ? `${quote(piece)} is in ${whereFrom(level)} only inside longer words (${quote(inside)}). Quote whole words, exactly as typed.`
+    : `${quote(piece)} is not in ${whereFrom(level)}.`;
+}
+
 export function quote(text: string): string {
   return `"${text.length > 80 ? `${text.slice(0, 77)}…` : text}"`;
 }

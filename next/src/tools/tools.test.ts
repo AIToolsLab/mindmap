@@ -206,3 +206,29 @@ describe("review fixes: sources and nesting marks", () => {
     expect(s.map.cards.find((c) => c.id === "c2")?.parentProvenance).toBeUndefined();
   });
 });
+
+describe("typos (Nhyira, option A: quote exactly as typed)", () => {
+  it("accepts a typo quoted as typed", () => {
+    const s = session(["how harnesses could be better defveloped for those cases"]);
+    expect(run(proposeCard, { pieces: ["how harnesses could be better defveloped"] }, s).ok).toBe(true);
+  });
+
+  it("says when the words are there only inside a longer word, so the model can retry", () => {
+    const s = session(["I want ai agent workflows and lik ethe creative work intersection"]);
+    const r = run(proposeCard, { pieces: ["the creative work intersection"] }, s);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toBe('"the creative work intersection" is in your messages only inside longer words ("ethe creative work intersection"). Quote whole words, exactly as typed.');
+    expect(run(proposeCard, { pieces: ["creative work intersection"] }, s).ok).toBe(true);
+  });
+
+  it("gives the same clearer reason for link evidence", () => {
+    let s = session(["lik ethe creative work so it matters"]);
+    s = { ...s, map: { cards: [{ id: "c1", text: "creative work", parentId: null, provenance: { kind: "user" }, x: 0, y: 0 }, { id: "c2", text: "it matters", parentId: null, provenance: { kind: "user" }, x: 0, y: 0 }], links: [] } };
+    const r = run(proposeLink, { from_card: "c1", to_card: "c2", label: "so", evidence: ["the creative work so it matters"] }, s);
+    expect(!r.ok && r.reason).toContain("only inside longer words");
+  });
+
+  it("tells the model to quote typos as typed", () => {
+    expect(proposeCard.description(0)).toContain("typos included");
+  });
+});

@@ -60,6 +60,26 @@ export function sourcesContaining(piece: string, sources: Source[]): Source[] {
     .sort((a, b) => (a.kind === b.kind ? b.index - a.index : a.kind === "chat" ? -1 : 1));
 }
 
+/**
+ * When a piece occurs in a source only inside longer words (a typo like "lik ethe"
+ * glued "the" to the letter before it), the whole-word stretch it sits in, so a
+ * refusal can say so. Undefined when the piece doesn't occur at all.
+ */
+export function enclosingWords(piece: string, sources: Source[]): string | undefined {
+  const p = norm(piece);
+  if (!p) return undefined;
+  for (const s of sources) {
+    const at = s.text.indexOf(p);
+    if (at === -1) continue;
+    let start = at;
+    let end = at + p.length;
+    while (start > 0 && WORD_CHAR.test(s.text[start - 1]!)) start--;
+    while (end < s.text.length && WORD_CHAR.test(s.text[end]!)) end++;
+    return s.text.slice(start, end);
+  }
+  return undefined;
+}
+
 /** A piece is usable only if it has at least one letter or number after normalizing. */
 export function hasWords(piece: string): boolean {
   return WORD_CHAR.test(norm(piece));

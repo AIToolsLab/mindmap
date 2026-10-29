@@ -111,6 +111,14 @@ whether the draft also has it).
   `From 2 messages` (`From N messages`). Proposed for any piece from the draft: `From your
   draft`; confirm the wording when building.
 - Refusal example: `"X is good" is not in your messages`.
+- **Typos (Nhyira, 10-28):** pieces are quoted exactly as typed, typos included; the
+  model doesn't correct spelling, and the writer can fix it on the card after accepting
+  (which, as any edit, drops the `From …` label). Pieces start and end on whole words.
+  When the words are there but only inside longer words (a typo like "lik ethe" glues
+  "the" to a letter), the refusal says so and shows the stretch they sit in, e.g.
+  `"the creative work intersection" is in your messages only inside longer words ("ethe
+  creative work intersection")`, so the model can retry with whole words. Tolerating
+  near-misses in the check was rejected: one letter is how "not" becomes "now".
 
 ### 5.2 `propose_link`
 

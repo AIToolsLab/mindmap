@@ -1,6 +1,6 @@
-import { eligibleSources, hasWords, norm, sourcesContaining } from "../state/match";
+import { eligibleSources, enclosingWords, hasWords, norm, sourcesContaining } from "../state/match";
 import type { PieceSource, Provenance } from "../state/types";
-import { quote, refuse, stringList, obj, whereFrom, type Tool } from "./common";
+import { notFoundReason, quote, refuse, stringList, obj, type Tool } from "./common";
 
 /** Spec §5.1. The model writes the pieces; the handler checks each against the writer's words. */
 export const proposeCard: Tool = {
@@ -12,6 +12,7 @@ export const proposeCard: Tool = {
       level === 0
         ? "Each piece must appear word for word in one of the writer's chat messages (any earlier message counts). The draft can't be quoted at this level."
         : "Each piece must appear word for word in one of the writer's chat messages or in their current draft.",
+      "Quote exactly as the writer typed, typos included; don't correct spelling (the writer can fix it on the card after accepting). Pieces start and end on whole words.",
       "Partial sentences are fine. The writer sees the card and accepts or rejects it.",
     ].join(" "),
   parameters: {
@@ -42,7 +43,7 @@ export const proposeCard: Tool = {
           return refuse(
             inDraft
               ? `${quote(piece)} is in your draft, but at L0 cards can only use your chat messages.`
-              : `${quote(piece)} is not in ${whereFrom(ctx.level)}.`,
+              : notFoundReason(piece, ctx.level, enclosingWords(piece, sources)),
             summary,
           );
         }
