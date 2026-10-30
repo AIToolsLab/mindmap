@@ -3,7 +3,9 @@ import { dirname, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadEnv } from "vite";
 
-const projectRoot = dirname(dirname(fileURLToPath(import.meta.url)));
+const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
+// Optional app folder (e.g. `next`) for the deploy switch; default is the current app at the root.
+const projectRoot = process.argv[2] ? join(repoRoot, process.argv[2]) : repoRoot;
 const distRoot = join(projectRoot, "dist");
 const productionEnv = loadEnv("production", projectRoot, "VITE_");
 const expectedBackendUrl = productionEnv.VITE_BACKEND_URL?.trim() ?? "";
