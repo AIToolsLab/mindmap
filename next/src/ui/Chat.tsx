@@ -6,6 +6,8 @@ import type { Proposal, Session, TranscriptItem } from "../state/types";
 interface Props {
   session: Session;
   busy: boolean;
+  /** Sending is off (e.g. the account isn't allowed to use the AI); map decisions still work. */
+  sendDisabled?: boolean;
   onSend: (text: string) => void;
   onAccept: (id: string) => void;
   onReject: (id: string) => void;
@@ -18,7 +20,7 @@ const STATUS: Record<Exclude<Proposal["status"], "pending">, string> = {
 };
 
 /** One line per tool call (spec §8): name, summary, then Accept/Reject or the outcome. */
-function ToolLine({ item, session, busy, onAccept, onReject }: { item: Extract<TranscriptItem, { kind: "tool" }> } & Omit<Props, "onSend">) {
+function ToolLine({ item, session, busy, onAccept, onReject }: { item: Extract<TranscriptItem, { kind: "tool" }> } & Omit<Props, "onSend" | "sendDisabled">) {
   const proposal = item.proposalId ? session.proposals.find((p) => p.id === item.proposalId) : undefined;
   const blocked = proposal?.status === "pending" ? blockedReason(session, proposal) : undefined;
   const label = proposal ? proposalLabel(proposal) : null;
@@ -67,7 +69,7 @@ function withBold(text: string): ReactNode[] {
   );
 }
 
-export function Chat({ session, busy, onSend, onAccept, onReject }: Props) {
+export function Chat({ session, busy, sendDisabled = false, onSend, onAccept, onReject }: Props) {
   const [text, setText] = useState("");
   const end = useRef<HTMLDivElement>(null);
   const box = useRef<HTMLTextAreaElement>(null);
@@ -86,7 +88,7 @@ export function Chat({ session, busy, onSend, onAccept, onReject }: Props) {
   }, [session.transcript.length, busy]);
 
   const send = () => {
-    if (busy || !text.trim()) return;
+    if (busy || sendDisabled || !text.trim()) return;
     onSend(text);
     setText("");
   };
@@ -122,7 +124,7 @@ export function Chat({ session, busy, onSend, onAccept, onReject }: Props) {
             }
           }}
         />
-        <button type="button" className="send" disabled={busy || !text.trim()} onClick={send}>
+        <button type="button" className="send" disabled={busy || sendDisabled || !text.trim()} onClick={send}>
           Send
         </button>
       </div>

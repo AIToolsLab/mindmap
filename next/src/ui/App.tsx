@@ -169,7 +169,8 @@ export function App({ bearerToken, onAccessError, aiAccessDenied = false, onDisc
           This account isn't enabled for Writing Tools AI. Contact the Writing Tools team for access. Your draft and map stay available.
         </div>
       )}
-      <Chat session={session} busy={busy || aiAccessDenied} onSend={send} onAccept={(id) => act((s) => acceptProposal(s, id))} onReject={(id) => act((s) => rejectProposal(s, id))} />
+      {/* Not allowed blocks sending only; accepting or rejecting proposals is a map edit. */}
+      <Chat session={session} busy={busy} sendDisabled={aiAccessDenied} onSend={send} onAccept={(id) => act((s) => acceptProposal(s, id))} onReject={(id) => act((s) => rejectProposal(s, id))} />
 
       <main className="map" aria-label="Map">
         <ReactFlowProvider>
