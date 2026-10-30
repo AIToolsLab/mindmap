@@ -261,6 +261,18 @@ After v1: port the adversarial fuzz harness to these tools; match the current ap
 look by screenshot comparison; L3; sign-in (copy `src/platform/` as is) and deploy;
 compare with the current app (code size, behaviour, how the coach feels) and decide.
 
+## Deploying: one switch, same rollback
+
+The Pages workflow ("Deploy Mindmap to GitHub Pages", run by hand from `main`) has an
+**app** choice: `current` (the default, the app in `src/`) or `next` (this app). Both
+deploy to mindmap.thoughtful-ai.com and use the same Writing Tools OAuth client,
+redirect URI and session storage key, so switching needs no backend or Helm change and
+users stay signed in. Their saved work lives under different browser storage keys per
+app, so switching back restores each app's own sessions. **Rollback = run the workflow
+again with `current`.** Sign-in in `next/` is `src/platform/platform-session.ts` copied as
+is plus a lean `next/src/platform/Bootstrap.tsx`. Once `next` is settled, swap the
+folders (Ken's suggestion on #6), delete the old app and drop the choice.
+
 ## 10. Layout
 
 ```

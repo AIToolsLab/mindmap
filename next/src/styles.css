@@ -124,6 +124,36 @@ button:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2p
 .react-flow__edge-text { font-size: 12px; }
 .react-flow__controls, .react-flow__minimap { border-radius: 10px; overflow: hidden; border: 1px solid var(--line); }
 
+/* Sign-in (same look as the current app's gate) */
+.platform-gate {
+  min-height: 100%;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 14px;
+  padding: 32px;
+  background: #f7f5ef;
+  text-align: center;
+}
+.platform-gate h1, .platform-gate p { max-width: 620px; margin: 0; }
+.platform-gate p { color: #625e55; }
+.platform-gate button { border-color: #b8b1a4; border-radius: 10px; padding: 12px 18px; }
+.platform-detail { font-size: 12px; }
+.access-banner {
+  position: fixed;
+  top: 52px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  max-width: 640px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: #fff4f2;
+  border: 1px solid #ead3cf;
+  color: var(--red);
+  font-size: 13px;
+}
+
 /* Draft */
 .draft { grid-area: draft; display: flex; flex-direction: column; min-height: 0; border-left: 1px solid var(--line); background: #fff; }
 .draft-head { padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; border-bottom: 1px solid var(--line); }

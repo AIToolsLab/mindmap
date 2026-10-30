@@ -1,6 +1,6 @@
 import { ReactFlowProvider } from "@xyflow/react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { callResponses } from "../loop/client";
+import { makeCallResponses } from "../loop/client";
 import { runTurn } from "../loop/turn";
 import { mapToMarkdown } from "../state/export";
 import {
@@ -28,7 +28,17 @@ const LEVELS: { value: Level; label: string }[] = [
   { value: 2, label: "L2 · coach may suggest" },
 ];
 
-export function App() {
+interface AppProps {
+  /** Writing Tools access token; absent in local dev without sign-in. */
+  bearerToken?: string;
+  onAccessError?: (status: 401 | 403) => void;
+  /** The signed-in account isn't allowed to use the AI (403). */
+  aiAccessDenied?: boolean;
+  /** Shown as a toolbar button when signed in. */
+  onDisconnect?: () => void;
+}
+
+export function App({ bearerToken, onAccessError, aiAccessDenied = false, onDisconnect }: AppProps = {}) {
   const [session, setSession] = useState<Session>(() => loadSession());
   const [busy, setBusy] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
@@ -95,7 +105,7 @@ export function App() {
     setEditId(null);
     setBusy(true);
     try {
-      const done = await runTurn(current.current, text, { callModel: callResponses, onUpdate: setSession });
+      const done = await runTurn(current.current, text, { callModel: makeCallResponses({ bearerToken, onAccessError }), onUpdate: setSession });
       setSession(done);
     } catch (error) {
       // runTurn reports its own errors; this only catches a failure outside it.
@@ -151,9 +161,15 @@ export function App() {
           Track suggestion adoption
         </label>
         <button type="button" className="quiet" disabled={busy} onClick={reset}>New session</button>
+        {onDisconnect && <button type="button" className="quiet" disabled={busy} onClick={onDisconnect}>Disconnect</button>}
       </header>
 
-      <Chat session={session} busy={busy} onSend={send} onAccept={(id) => act((s) => acceptProposal(s, id))} onReject={(id) => act((s) => rejectProposal(s, id))} />
+      {aiAccessDenied && (
+        <div className="access-banner" role="alert">
+          This account isn't enabled for Writing Tools AI. Contact the Writing Tools team for access. Your draft and map stay available.
+        </div>
+      )}
+      <Chat session={session} busy={busy || aiAccessDenied} onSend={send} onAccept={(id) => act((s) => acceptProposal(s, id))} onReject={(id) => act((s) => rejectProposal(s, id))} />
 
       <main className="map" aria-label="Map">
         <ReactFlowProvider>

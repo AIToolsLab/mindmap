@@ -3,6 +3,16 @@ name: Deploy Mindmap to GitHub Pages
 on:
   pull_request:
   workflow_dispatch:
+    inputs:
+      app:
+        # The switch between the two apps. Rolling back = running this again with the
+        # other choice. Both use the same sign-in client and URL, so nothing else changes.
+        description: "Which app to deploy to mindmap.thoughtful-ai.com"
+        type: choice
+        options:
+          - current
+          - next
+        default: current
 
 permissions:
   contents: read
@@ -22,9 +32,17 @@ jobs:
         with:
           node-version: 24
           cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            next/package-lock.json
       - run: npm ci
-      - run: npm run build:pages
-      - run: npm run verify:pages
+      # Pull requests build and verify both apps; a deployment builds only the chosen one.
+      - name: Build current app
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.app != 'next' }}
+        run: npm run build:pages && npm run verify:pages
+      - name: Build next app
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.app == 'next' }}
+        run: npm ci --prefix next && npm run build --prefix next && node scripts/verify-pages-build.mjs next
       - name: Configure Pages
         if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' }}
         uses: actions/configure-pages@v5
@@ -32,7 +50,7 @@ jobs:
         if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' }}
         uses: actions/upload-pages-artifact@v4
         with:
-          path: dist
+          path: ${{ inputs.app == 'next' && 'next/dist' || 'dist' }}
 
   deploy:
     name: Deploy Pages artifact
