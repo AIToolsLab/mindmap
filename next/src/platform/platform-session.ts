@@ -315,13 +315,13 @@ export async function exchangeAuthorizationCode(
       },
     );
   } catch (error) {
-    throw new OAuthFlowError("network", error instanceof Error ? error.message : "Could not reach Writing Tools.");
+    throw new OAuthFlowError("network", error instanceof Error ? error.message : "Could not reach Thoughtful Platform.");
   }
   const body = await response.json().catch(() => ({})) as Record<string, unknown>;
   if (!response.ok) {
     throw new OAuthFlowError(
       body.error === "access_denied" ? "denied" : "invalid",
-      typeof body.error_description === "string" ? body.error_description : "Writing Tools rejected the login.",
+      typeof body.error_description === "string" ? body.error_description : "Thoughtful Platform rejected the login.",
     );
   }
   const expiresIn = body.expires_in;
@@ -333,12 +333,12 @@ export async function exchangeAuthorizationCode(
     expiresIn <= 0 || expiresIn > 86_400 ||
     !isCompactJwt(body.access_token)
   ) {
-    throw new OAuthFlowError("invalid", "Writing Tools returned an invalid OAuth session.");
+    throw new OAuthFlowError("invalid", "Thoughtful Platform returned an invalid OAuth session.");
   }
   const now = (options.now ?? Date.now)();
   const tokenExpiry = decodeJwtExpiry(body.access_token);
   if (tokenExpiry !== null && tokenExpiry <= now) {
-    throw new OAuthFlowError("invalid", "Writing Tools returned an expired OAuth session.");
+    throw new OAuthFlowError("invalid", "Thoughtful Platform returned an expired OAuth session.");
   }
   return {
     version: 1,

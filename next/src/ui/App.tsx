@@ -29,7 +29,7 @@ const LEVELS: { value: Level; label: string }[] = [
 ];
 
 interface AppProps {
-  /** Writing Tools access token; absent in local dev without sign-in. */
+  /** Thoughtful Platform access token; absent in local dev without sign-in. */
   bearerToken?: string;
   onAccessError?: (status: 401 | 403) => void;
   /** The signed-in account isn't allowed to use the AI (403). */
@@ -166,7 +166,7 @@ export function App({ bearerToken, onAccessError, aiAccessDenied = false, onDisc
 
       {aiAccessDenied && (
         <div className="access-banner" role="alert">
-          This account isn't enabled for Writing Tools AI. Contact the Writing Tools team for access. Your draft and map stay available.
+          This account isn't enabled for Thoughtful Platform AI. Contact the Thoughtful Platform team for access. Your draft and map stay available.
         </div>
       )}
       {/* Not allowed blocks sending only; accepting or rejecting proposals is a map edit. */}

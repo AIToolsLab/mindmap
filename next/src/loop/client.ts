@@ -1,7 +1,7 @@
 import { PLATFORM_BACKEND_URL } from "../platform/platform-session";
 
 /**
- * One call to the Responses API through the Writing Tools proxy (spec §7). Stateless:
+ * One call to the Responses API through the Thoughtful Platform proxy (spec §7). Stateless:
  * `store: false`, and reasoning comes back encrypted so it can be passed back within a
  * turn without the provider keeping anything.
  */
@@ -26,7 +26,7 @@ const PLATFORM_AUTH_ERROR_HEADER = "X-Writing-Tools-Error";
 const PLATFORM_AUTH_ERROR_VALUE = "platform-auth";
 
 export interface ClientOptions {
-  /** Writing Tools access token from the sign-in; absent in local dev without login. */
+  /** Thoughtful Platform access token from the sign-in; absent in local dev without login. */
   bearerToken?: string;
   /** 401: sign in again. 403: this account isn't allowed to use the AI. */
   onAccessError?: (status: 401 | 403) => void;

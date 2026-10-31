@@ -19,7 +19,7 @@ import {
 } from "./platform-session";
 
 /**
- * Sign-in for the tools-first app: the same Writing Tools OAuth (PKCE) flow as the
+ * Sign-in for the tools-first app: the same Thoughtful Platform OAuth (PKCE) flow as the
  * current app's `src/platform/PlatformBootstrap.tsx`, without its language and reader
  * plumbing. Same client, same redirect URI and the same session storage key, so a
  * signed-in user stays signed in when the site is switched between the two apps.
@@ -97,7 +97,7 @@ function BootstrapContent() {
   const [boot, setBoot] = useState<BootState>(initialBootState);
   const [forbidden, setForbidden] = useState(false);
 
-  // Returning from Writing Tools: exchange the code for a token.
+  // Returning from Thoughtful Platform: exchange the code for a token.
   useEffect(() => {
     const callback = captured.current;
     if (!callback || handled.current) return;
@@ -119,7 +119,7 @@ function BootstrapContent() {
     if (callback.error) {
       return setBoot({
         kind: "connect_required",
-        detail: callback.error === "access_denied" ? "Writing Tools access was not granted." : "Writing Tools could not complete the login.",
+        detail: callback.error === "access_denied" ? "Thoughtful Platform access was not granted." : "Thoughtful Platform could not complete the login.",
       });
     }
     if (!callback.code || !transaction) return setBoot({ kind: "connect_required", detail: NOT_VERIFIED });
@@ -130,7 +130,7 @@ function BootstrapContent() {
         setForbidden(false);
         setBoot({ kind: "ready", session });
       })
-      .catch(() => setBoot({ kind: "connect_required", detail: "Writing Tools could not complete the login. Please try again." }));
+      .catch(() => setBoot({ kind: "connect_required", detail: "Thoughtful Platform could not complete the login. Please try again." }));
   }, []);
 
   const connect = useCallback(async () => {
@@ -161,13 +161,13 @@ function BootstrapContent() {
   const onAccessError = useCallback(
     (status: 401 | 403) => {
       if (status === 403) setForbidden(true);
-      else signOut("Your Writing Tools access expired. Your local work is still here.");
+      else signOut("Your Thoughtful Platform access expired. Your local work is still here.");
     },
     [signOut],
   );
 
   if (boot.kind === "connecting") {
-    return <main className="platform-gate"><h1>Connecting to Writing Tools…</h1></main>;
+    return <main className="platform-gate"><h1>Connecting to Thoughtful Platform…</h1></main>;
   }
   if (boot.kind === "storage_unavailable") {
     return (
@@ -180,8 +180,8 @@ function BootstrapContent() {
   if (boot.kind === "connect_required") {
     return (
       <main className="platform-gate">
-        <h1>Connect to Writing Tools</h1>
-        <p>Sign in to use Writing Tools AI. Your chat, map and draft stay in this browser.</p>
+        <h1>Connect to Thoughtful Platform</h1>
+        <p>Sign in to use Thoughtful Platform AI. Your chat, map and draft stay in this browser.</p>
         {boot.detail && <p className="platform-detail" role="alert">{boot.detail}</p>}
         <button type="button" onClick={() => void connect()}>Connect</button>
       </main>

@@ -218,7 +218,7 @@ prompt cache covers it):
    from the app and not the writer.
 5. **The writer's new message.**
 
-API: OpenAI Responses through the Writing Tools proxy (`/api/openai/responses`), the
+API: OpenAI Responses through the Thoughtful Platform proxy (`/api/openai/responses`), the
 same model setting as today (`VITE_MINDMAP_MODEL`). Local development uses the backend's
 sessionless path, so v1 needs no sign-in.
 
@@ -265,7 +265,7 @@ compare with the current app (code size, behaviour, how the coach feels) and dec
 
 The Pages workflow ("Deploy Mindmap to GitHub Pages", run by hand from `main`) has an
 **app** choice: `current` (the default, the app in `src/`) or `next` (this app). Both
-deploy to mindmap.thoughtful-ai.com and use the same Writing Tools OAuth client,
+deploy to mindmap.thoughtful-ai.com and use the same Thoughtful Platform OAuth client,
 redirect URI and session storage key, so switching needs no backend or Helm change and
 users stay signed in. Their saved work lives under different browser storage keys per
 app, so switching back restores each app's own sessions. **Rollback = run the workflow

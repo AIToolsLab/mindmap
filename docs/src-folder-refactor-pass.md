@@ -41,7 +41,7 @@ Every module moves with its co-located test (`x.ts` → same folder as
 | `src/grounding/` | code checks on AI output | `validator.ts`, `normalize.ts`, `unicode-scripts.ts`, `action-gateway.ts`, `map-commands.ts` |
 | `src/map/` | map, Source Bank and proposal state; provenance | `map-store.ts`, `store.ts`, `proposal-store.ts`, `map-layout.ts`, `map-export.ts`, `provenance-summary.ts`, `suggestion-adoption.ts` |
 | `src/session/` | persistence, logging, diagnostics | `session-persistence.ts`, `event-ledger.ts`, `trace.ts`, `understanding.ts` |
-| `src/platform/` | Writing Tools sign-in | `platform-session.ts`, `PlatformBootstrap.tsx`, `platform.css` |
+| `src/platform/` | Thoughtful Platform sign-in | `platform-session.ts`, `PlatformBootstrap.tsx`, `platform.css` |
 | `src/ui/` | React components, UI copy, DOM helpers | `App.tsx`, `ControlRoom.tsx`, `Map.tsx`, `reader-view.tsx`, `reader-translation.ts`, `mutation-policy.tsx`, `useSpeechToText.ts`, `draft-anchor.ts`, `ui-locale.tsx`, `ui-strings.ts` |
 | `src/i18n/` | translation dictionaries (unchanged) | existing `*.json` and `README.md` stay exactly where they are |
 

@@ -54,7 +54,7 @@ test("development opens directly and uses the sessionless provider path", async 
   });
 
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Connect to Writing Tools" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Connect to Thoughtful Platform" })).toHaveCount(0);
   const composer = page.locator("textarea.composer-textarea");
   await composer.fill("Help me think about this draft.");
   await composer.press("Enter");

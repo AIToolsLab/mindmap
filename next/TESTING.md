@@ -1,9 +1,9 @@
 # Trying the tools-first Mindmap locally
 
-For colleagues who already have the Writing Tools repo with its backend set up
+For colleagues who already have the Thoughtful Platform repo with its backend set up
 (dependencies installed, `OPENAI_API_KEY` in `backend/.env`). Calls are paid by that key.
 
-## 1. Start your Writing Tools backend with sign-in off
+## 1. Start your Thoughtful Platform backend with sign-in off
 
 From inside `writing-tools/backend` (it loads `.env` from the folder it starts in):
 

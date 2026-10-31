@@ -6,7 +6,7 @@ Companion: Track A in `AIToolsLab/writing-tools`
 
 ## What changed
 
-Mindmap is no longer a tool launched by the Writing Tools taskpane. It is a
+Mindmap is no longer a tool launched by the Thoughtful Platform taskpane. It is a
 standalone public web app on its own origin. Nobody hands it a document or a
 credential — a person visits the URL, signs in, and **pastes their text in
 manually.**
@@ -20,7 +20,7 @@ Word / Google Docs
     ↕  manual copy / paste          ← deliberate, not a gap
 Mindmap  (this repo, GitHub Pages, own origin)
     ↕  OAuth PKCE token, scope: openai:chat only
-Writing Tools backend
+Thoughtful Platform backend
 ```
 
 ## Out of scope
@@ -36,7 +36,7 @@ automatic document reading. There is no `doc:read` scope any more.
 ### 1. Replace the launch gate with a login gate
 
 Today `launchRequired()` in `src/platform/platform-session.ts` refuses to start unless
-Writing Tools launched the app. Replace it with `loginRequired()` **keeping the
+Thoughtful Platform launched the app. Replace it with `loginRequired()` **keeping the
 exact same shape**:
 
 ```ts
@@ -52,7 +52,7 @@ at runtime to signal the gate was disabled. That reasoning is unchanged.
 `Authorization` header the backend's sessionless path spends the capped demo
 key. Preserve that: `npm run dev` should open a working Mindmap with no OAuth.
 
-Direct visit in production shows a **"Connect to Writing Tools"** screen instead
+Direct visit in production shows a **"Connect to Thoughtful Platform"** screen instead
 of the current "launch required" refusal.
 
 ### 2. The PKCE flow
@@ -130,7 +130,7 @@ treated as "log in again," they loop forever — succeeding at login, failing at
 the proxy, being sent back to login. Signing in again cannot fix a 403; only an
 allowlist change can.
 
-Show a terminal message for 403: their account isn't enabled for Writing Tools
+Show a terminal message for 403: their account isn't enabled for Thoughtful Platform
 AI, and who to contact. Keep their map work on screen.
 
 Both responses carry `X-Writing-Tools-Error: platform-auth`, and Track A
@@ -142,12 +142,12 @@ error — do not infer it from the status code alone.
 
 Clear the stored token and return to the connect screen.
 
-**Do not call `/api/auth/sign-out`.** That would end the user's Writing Tools
+**Do not call `/api/auth/sign-out`.** That would end the user's Thoughtful Platform
 browser session, which is shared with the add-in and anything else they have
-open. Mindmap logging out must not sign someone out of Writing Tools.
+open. Mindmap logging out must not sign someone out of Thoughtful Platform.
 
 Send `credentials: 'omit'` on every backend request. Mindmap authenticates with
-a bearer token and must never rely on, or transmit, Writing Tools cookies —
+a bearer token and must never rely on, or transmit, Thoughtful Platform cookies —
 that isolation is the whole point of the redirect flow.
 
 ### 4. Delete the old path

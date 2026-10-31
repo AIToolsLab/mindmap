@@ -5,7 +5,7 @@ const req = { instructions: "i", input: [], tools: [], toolChoice: "auto" as con
 const respond = (status: number, body: unknown, headers: Record<string, string> = {}) =>
   vi.fn(async (_url: string | URL | Request, _init?: RequestInit) => new Response(JSON.stringify(body), { status, headers }));
 
-describe("model client with Writing Tools sign-in", () => {
+describe("model client with Thoughtful Platform sign-in", () => {
   it("sends the access token and returns the output items", async () => {
     const fetchImpl = respond(200, { output: [{ type: "message" }] });
     const out = await makeCallResponses({ bearerToken: "tok", fetchImpl })(req);

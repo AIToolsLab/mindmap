@@ -155,8 +155,8 @@ function PlatformBootstrapContent() {
       setBoot({
         kind: "connect_required",
         detail: callback.error === "access_denied"
-          ? t("Writing Tools access was not granted.")
-          : t("Writing Tools could not complete the login."),
+          ? t("Thoughtful Platform access was not granted.")
+          : t("Thoughtful Platform could not complete the login."),
       });
       return;
     }
@@ -172,7 +172,7 @@ function PlatformBootstrapContent() {
         setBoot({ kind: "ready", session });
       })
       .catch(() => {
-        setBoot({ kind: "connect_required", detail: t("Writing Tools could not complete the login. Please try again.") });
+        setBoot({ kind: "connect_required", detail: t("Thoughtful Platform could not complete the login. Please try again.") });
       });
   }, [t]);
 
@@ -224,7 +224,7 @@ function PlatformBootstrapContent() {
       return;
     }
     setForbidden(false);
-    setBoot({ kind: "connect_required", detail: t("Your Writing Tools access expired. Your local work is still here.") });
+    setBoot({ kind: "connect_required", detail: t("Your Thoughtful Platform access expired. Your local work is still here.") });
   }, [t]);
 
   const providerRuntime = useMemo<ProviderRuntimeConfig | undefined>(() => {
@@ -236,7 +236,7 @@ function PlatformBootstrapContent() {
   }, [boot, onAccessError]);
 
   if (boot.kind === "connecting") {
-    return <main className="platform-gate"><h1>{t("Connecting to Writing Tools…")}</h1></main>;
+    return <main className="platform-gate"><h1>{t("Connecting to Thoughtful Platform…")}</h1></main>;
   }
 
   if (boot.kind === "storage_unavailable") {
@@ -251,8 +251,8 @@ function PlatformBootstrapContent() {
   if (boot.kind === "connect_required") {
     return (
       <main className="platform-gate">
-        <h1>{t("Connect to Writing Tools")}</h1>
-        <p>{t("Sign in to use Writing Tools AI. Your draft and map stay in this browser.")}</p>
+        <h1>{t("Connect to Thoughtful Platform")}</h1>
+        <p>{t("Sign in to use Thoughtful Platform AI. Your draft and map stay in this browser.")}</p>
         {boot.detail && <p className="platform-detail" role="alert">{boot.detail}</p>}
         <button type="button" onClick={() => void connect()}>{t("Connect")}</button>
       </main>

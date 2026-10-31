@@ -22,7 +22,7 @@ npm run dev
 ```
 
 Development opens at `http://localhost:5181/` without a login prompt. Requests
-without a bearer token use Writing Tools' capped sessionless development path.
+without a bearer token use Thoughtful Platform' capped sessionless development path.
 To exercise the login gate locally, set `VITE_REQUIRE_LOGIN=true`; this flag is
 development-only and can never disable login in a production build.
 
@@ -35,7 +35,7 @@ The development defaults are:
 
 ## Production authentication
 
-Production always requires **Connect to Writing Tools**. Mindmap uses OAuth
+Production always requires **Connect to Thoughtful Platform**. Mindmap uses OAuth
 Authorization Code with PKCE S256 as a public client and requests only
 `openai:chat`. The PKCE transaction and 12-hour JWT are stored in session
 storage; local map work is stored separately and survives expiry, failed login,
@@ -51,9 +51,9 @@ The production bundle pins:
 The resource is the backend origin only—no `/api` path and no trailing slash—and
 is sent on both authorize and token requests. Browser requests use
 `credentials: "omit"`; Disconnect clears only Mindmap's local OAuth state and
-never signs the user out of Writing Tools.
+never signs the user out of Thoughtful Platform.
 
-Before production login can work, the Writing Tools backend deployment must set:
+Before production login can work, the Thoughtful Platform backend deployment must set:
 
 ```text
 MINDMAP_OAUTH_CLIENT_ID=writing-tools-mindmap
@@ -72,7 +72,7 @@ updates the fixed client. Do not register localhost on the production server.
 | `src/grounding/` | Code checks on AI output |
 | `src/map/` | Map, Source Bank, proposal state, and provenance |
 | `src/session/` | Persistence, logging, and diagnostics |
-| `src/platform/` | Writing Tools sign-in |
+| `src/platform/` | Thoughtful Platform sign-in |
 | `src/ui/` | React components, UI copy, and DOM helpers |
 | `src/i18n/` | Translation dictionaries |
 

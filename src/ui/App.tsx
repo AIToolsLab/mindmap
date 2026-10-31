@@ -4340,7 +4340,7 @@ export default function App({ providerRuntime, aiAccessDenied = false }: AppProp
           </div>
 
           <div className="input-area">
-            {aiAccessDenied && <div className="error-banner" role="alert">{t("This account is not enabled for Writing Tools AI. Contact the Writing Tools team for access. Your draft and map remain available.")}</div>}
+            {aiAccessDenied && <div className="error-banner" role="alert">{t("This account is not enabled for Thoughtful Platform AI. Contact the Thoughtful Platform team for access. Your draft and map remain available.")}</div>}
             {error && <div className="error-banner">{error}</div>}
             {stickyDraftFocus && (
               <div className="focus-chip" role="status">

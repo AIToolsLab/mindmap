@@ -90,7 +90,7 @@ test("production requires Connect and loads without console or asset failures", 
     if (response.url().startsWith("http://127.0.0.1:") && response.status() >= 400) failedAssets.push(response.url());
   });
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Connect to Writing Tools" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Connect to Thoughtful Platform" })).toBeVisible();
   expect(pageErrors).toEqual([]);
   expect(consoleErrors).toEqual([]);
   expect(failedAssets).toEqual([]);
@@ -133,7 +133,7 @@ test("failed exchange still leaves no authorization material in the URL", async 
   });
   await page.goto("/");
   await page.getByRole("button", { name: "Connect", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Connect to Writing Tools" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Connect to Thoughtful Platform" })).toBeVisible();
   expect(new URL(page.url()).search).toBe("");
 });
 
@@ -151,7 +151,7 @@ test("401 clears OAuth only and preserves local map work", async ({ page }) => {
   await page.locator("textarea.map-card-editor").blur();
   await page.locator("textarea.composer-textarea").fill("Trigger auth");
   await page.locator("textarea.composer-textarea").press("Enter");
-  await expect(page.getByRole("heading", { name: "Connect to Writing Tools" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Connect to Thoughtful Platform" })).toBeVisible();
   expect(await page.evaluate((key) => window.sessionStorage.getItem(key), SESSION_KEY)).toBeNull();
   expect(await page.evaluate(() => window.localStorage.getItem("prototype-mindmap-session-v1"))).toContain("keep this card");
 });
@@ -170,7 +170,7 @@ test("403 keeps the workspace and never offers another login", async ({ page }) 
   await page.locator("textarea.map-card-editor").blur();
   await page.locator("textarea.composer-textarea").fill("Trigger auth");
   await page.locator("textarea.composer-textarea").press("Enter");
-  await expect(page.getByText(/Contact the Writing Tools team for access/)).toBeVisible();
+  await expect(page.getByText(/Contact the Thoughtful Platform team for access/)).toBeVisible();
   await expect(page.locator("textarea.map-card-editor")).toHaveValue("still visible");
   await expect(page.getByRole("button", { name: "Connect", exact: true })).toHaveCount(0);
 });
@@ -190,6 +190,6 @@ test("clipboard output and explicit Disconnect preserve local work", async ({ pa
   expect(await page.evaluate(() => (window as Window & { __copied?: string }).__copied)).toBe("# Mindmap\n- Map card\n");
 
   await page.getByRole("button", { name: "Disconnect" }).click();
-  await expect(page.getByRole("heading", { name: "Connect to Writing Tools" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Connect to Thoughtful Platform" })).toBeVisible();
   expect(await page.evaluate(() => window.localStorage.getItem("prototype-mindmap-session-v1"))).toContain("Map card");
 });
