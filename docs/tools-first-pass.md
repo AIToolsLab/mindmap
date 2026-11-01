@@ -239,13 +239,17 @@ sessionless path, so v1 needs no sign-in.
 
 ## 8. What the writer sees
 
-- **Chat**, with each tool call as one line: tool name, a one-line summary, and the
-  result. Proposals have **Accept** and **Reject**; refusals have a collapsed **why**:
+- **Chat**, with each tool call as a small block: a top row with the tool name, its
+  label and **Accept**/**Reject** (or the outcome, e.g. "Accepted as c3"), and the full
+  text underneath at any length. Pending proposals stand out; decided ones fade back; a
+  refusal is one quiet row whose reason opens on request (Nhyira, 11-01):
 
   ```
-  ✕ suggest_idea · refused                          ▸ why
-  ✓ propose_card · "X is bad"                       [Accept] [Reject]
-  ✓ propose_link · I like X → because → X is bad    [Accept] [Reject]
+  ✕ suggest_idea                                   refused · why
+  ✓ propose_card                                   [Accept] [Reject]
+    "X is bad"
+  ✓ propose_link  AI suggested                     [Accept] [Reject]
+    "I like X" → because → "X is bad"
   That sounds like the reason behind your doubt…
   ```
 

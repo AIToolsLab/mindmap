@@ -20,42 +20,56 @@ const STATUS: Record<Exclude<Proposal["status"], "pending">, string> = {
   dropped: "Dropped",
 };
 
-/** One line per tool call (spec §8): name, summary, then Accept/Reject or the outcome. */
+/**
+ * One tool call (spec §8): a top row with the tool, its label and Accept/Reject (or the
+ * outcome), and the proposal's text underneath at any length. Pending proposals stand
+ * out; decided ones fade back; a refusal is one quiet row with its reason on request.
+ */
 function ToolLine({ item, session, busy, onAccept, onReject }: { item: Extract<TranscriptItem, { kind: "tool" }> } & Omit<Props, "onSend" | "sendDisabled">) {
+  const [showWhy, setShowWhy] = useState(false);
   const proposal = item.proposalId ? session.proposals.find((p) => p.id === item.proposalId) : undefined;
-  const blocked = proposal?.status === "pending" ? blockedReason(session, proposal) : undefined;
+  const pending = item.ok && proposal?.status === "pending";
+  // Only sessions saved before links needed cards on the map can still be blocked.
+  const blocked = pending && proposal ? blockedReason(session, proposal) : undefined;
   const label = proposal ? proposalLabel(proposal) : null;
+  const state = !item.ok ? "tool-refused" : pending ? "tool-pending" : "tool-decided";
   return (
-    <div className={`tool-line ${item.ok ? "tool-ok" : "tool-refused"}`}>
-      <span className="tool-mark" aria-hidden>{item.ok ? "✓" : "✕"}</span>
-      <span className="tool-name">{item.name}</span>
-      <span className="tool-summary">· {item.ok ? item.summary : "refused"}</span>
-      {label && <span className="badge">{label}</span>}
-      {item.ok && proposal?.status === "pending" && (
-        <span className="tool-buttons">
-          <button type="button" className="accept" disabled={busy || !!blocked} title={blocked} onClick={() => onAccept(proposal.id)}>
-            Accept
-          </button>
-          <button type="button" disabled={busy} onClick={() => onReject(proposal.id)}>
-            Reject
-          </button>
+    <div className={`tool-line ${state}`}>
+      <div className="tool-head">
+        <span className="tool-mark" aria-hidden>{item.ok ? "✓" : "✕"}</span>
+        <span className="tool-name">{item.name}</span>
+        {label && <span className="badge">{label}</span>}
+        <span className="tool-end">
+          {pending && proposal && (
+            <>
+              <button type="button" className="accept" disabled={busy || !!blocked} title={blocked} onClick={() => onAccept(proposal.id)}>
+                Accept
+              </button>
+              <button type="button" disabled={busy} onClick={() => onReject(proposal.id)}>
+                Reject
+              </button>
+            </>
+          )}
+          {item.ok && proposal && proposal.status !== "pending" && (
+            <span className={`tool-status status-${proposal.status}`}>
+              {STATUS[proposal.status]}
+              {"cardId" in proposal && proposal.cardId ? ` as ${proposal.cardId}` : ""}
+            </span>
+          )}
+          {!item.ok && (
+            <button type="button" className="tool-why-toggle" aria-expanded={showWhy} onClick={() => setShowWhy((v) => !v)}>
+              refused · {showWhy ? "hide" : "why"}
+            </button>
+          )}
         </span>
-      )}
-      {item.ok && proposal && proposal.status !== "pending" && (
-        <span className={`tool-status status-${proposal.status}`} title={proposal.note}>
-          {STATUS[proposal.status]}
-          {"cardId" in proposal && proposal.cardId ? ` as ${proposal.cardId}` : ""}
-          {proposal.note ? ` · ${proposal.note}` : ""}
-        </span>
-      )}
-      {!item.ok && (
-        <details className="tool-why">
-          <summary>why</summary>
-          <div>
-            <div className="muted">{item.summary}</div>
-            {item.reason}
-          </div>
-        </details>
+      </div>
+      {item.ok && <div className="tool-text">{item.summary}</div>}
+      {item.ok && proposal?.note && <div className="tool-note">{proposal.note}</div>}
+      {!item.ok && showWhy && (
+        <div className="tool-why">
+          <div className="tool-text">{item.summary}</div>
+          {item.reason}
+        </div>
       )}
     </div>
   );
