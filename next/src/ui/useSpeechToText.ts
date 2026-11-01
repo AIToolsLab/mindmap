@@ -52,10 +52,12 @@ export interface SpeechToTextState {
 
 /**
  * Browser speech-to-text (Web Speech API), copied from the current app's
- * `src/ui/useSpeechToText.ts` with one change: after `reset()`, results are ignored
- * until the next `start()`. `stop()` still delivers a final result for the words
- * heard so far, and once the box has been sent and cleared that late result would
- * otherwise refill it.
+ * `src/ui/useSpeechToText.ts` with two changes:
+ * - After `reset()`, results are ignored until the next `start()`. `stop()` still
+ *   delivers a final result for the words heard so far, and once the box has been sent
+ *   and cleared that late result would otherwise refill it.
+ * - `start()` right after `stop()` waits for the browser to end the previous session
+ *   (its `end` event), because starting before then throws and nothing happened.
  */
 export function useSpeechToText(): SpeechToTextState {
   const [supported, setSupported] = useState(false);
@@ -65,6 +67,10 @@ export function useSpeechToText(): SpeechToTextState {
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const finalTranscriptRef = useRef("");
   const discardRef = useRef(false);
+  /** The browser's session is running: started, and its `end` event hasn't come yet. */
+  const runningRef = useRef(false);
+  /** `start()` was called while the previous session was still ending. */
+  const restartRef = useRef(false);
 
   useEffect(() => {
     const Constructor = getSpeechConstructor();
@@ -97,8 +103,26 @@ export function useSpeechToText(): SpeechToTextState {
       setTranscript(nextFinal);
       setInterim(nextInterim);
     };
-    recognition.onend = () => setListening(false);
-    recognition.onerror = () => setListening(false);
+    recognition.onend = () => {
+      runningRef.current = false;
+      if (!restartRef.current) {
+        setListening(false);
+        return;
+      }
+      restartRef.current = false;
+      // The words the previous session was still finishing are already in the seed.
+      discardRef.current = false;
+      try {
+        recognition.start();
+        runningRef.current = true;
+      } catch {
+        setListening(false);
+      }
+    };
+    // An error is followed by `end`, which starts a waiting restart.
+    recognition.onerror = () => {
+      if (!restartRef.current) setListening(false);
+    };
     recognitionRef.current = recognition;
 
     return () => {
@@ -120,18 +144,27 @@ export function useSpeechToText(): SpeechToTextState {
     start(seedText = "") {
       if (!recognitionRef.current || listening) return;
       const seededTranscript = seedText.trim();
-      discardRef.current = false;
       finalTranscriptRef.current = seededTranscript;
       setTranscript(seededTranscript);
       setInterim("");
+      if (runningRef.current) {
+        // Still ending: ignore its last results (the seed has them) and start on `end`.
+        discardRef.current = true;
+        restartRef.current = true;
+        setListening(true);
+        return;
+      }
+      discardRef.current = false;
       try {
         recognitionRef.current.start();
+        runningRef.current = true;
         setListening(true);
       } catch {
         setListening(false);
       }
     },
     stop() {
+      restartRef.current = false;
       recognitionRef.current?.stop();
       setListening(false);
     },

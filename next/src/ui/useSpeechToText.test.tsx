@@ -51,6 +51,26 @@ class MockSpeechRecognition {
   }
 }
 
+/** Like the browser: stop() ends the session later, and start() throws until it has. */
+class SlowEndSpeechRecognition extends MockSpeechRecognition {
+  running = false;
+  starts = 0;
+
+  start() {
+    if (this.running) throw new Error("InvalidStateError");
+    this.running = true;
+    this.starts += 1;
+    super.start();
+  }
+
+  stop() {}
+
+  finishEnding() {
+    this.running = false;
+    this.onend?.();
+  }
+}
+
 function Harness({ onChange }: { onChange: (state: SpeechToTextState) => void }) {
   onChange(useSpeechToText());
   return null;
@@ -160,6 +180,81 @@ describe("useSpeechToText", () => {
     });
 
     expect(latestState.transcript).toBe("next thought");
+  });
+
+  it("starting again before the previous session has ended waits for it, then listens", () => {
+    (window as Window & { SpeechRecognition?: typeof SlowEndSpeechRecognition }).SpeechRecognition =
+      SlowEndSpeechRecognition;
+
+    renderHarness();
+
+    act(() => {
+      latestState.start();
+    });
+    const recognition = MockSpeechRecognition.latest as SlowEndSpeechRecognition;
+
+    act(() => {
+      recognition.emitResult([{ transcript: "hello there", isFinal: false }]);
+    });
+
+    // Mic off, then straight back on with the box's text as the seed.
+    act(() => {
+      latestState.stop();
+    });
+    act(() => {
+      latestState.start("hello there");
+    });
+
+    expect(latestState.listening).toBe(true);
+    expect(recognition.starts).toBe(1);
+
+    // The ending session's final result is already in the seed, so it isn't added twice.
+    act(() => {
+      recognition.emitResult([{ transcript: "hello there", isFinal: true }]);
+    });
+
+    expect(latestState.transcript).toBe("hello there");
+
+    act(() => {
+      recognition.finishEnding();
+    });
+
+    expect(recognition.starts).toBe(2);
+    expect(latestState.listening).toBe(true);
+
+    act(() => {
+      recognition.emitResult([{ transcript: "and more", isFinal: true }]);
+    });
+
+    expect(latestState.transcript).toBe("hello there and more");
+  });
+
+  it("stopping while a restart waits cancels it", () => {
+    (window as Window & { SpeechRecognition?: typeof SlowEndSpeechRecognition }).SpeechRecognition =
+      SlowEndSpeechRecognition;
+
+    renderHarness();
+
+    act(() => {
+      latestState.start();
+    });
+    const recognition = MockSpeechRecognition.latest as SlowEndSpeechRecognition;
+
+    act(() => {
+      latestState.stop();
+    });
+    act(() => {
+      latestState.start();
+    });
+    act(() => {
+      latestState.stop();
+    });
+    act(() => {
+      recognition.finishEnding();
+    });
+
+    expect(recognition.starts).toBe(1);
+    expect(latestState.listening).toBe(false);
   });
 
   it("reset clears transcript state", () => {
