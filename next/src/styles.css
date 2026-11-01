@@ -136,7 +136,9 @@ body.resizing { cursor: col-resize; user-select: none; }
   padding: 6px 10px 10px;
 }
 .card-parent { width: 100%; height: 100%; background: #fbfaf7; border-style: solid; border-color: #c9c3b6; }
-.card-parent .card-text { -webkit-line-clamp: 2; display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; font-weight: 600; }
+/* A parent's title stays two lines over its children, and opens up while it's edited. */
+.card-parent .card-text { font-weight: 600; }
+.card-parent .card-text:not(:focus) { max-height: 2.9em; }
 .card-ai { border-color: #c9b8dc; }
 .react-flow__node.selected > .card { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(26, 111, 163, 0.15); }
 .card-head { display: flex; align-items: center; gap: 4px; min-height: 22px; }
@@ -145,8 +147,12 @@ body.resizing { cursor: col-resize; user-select: none; }
 .card-actions { margin-left: auto; display: flex; gap: 4px; opacity: 0.55; }
 .card:hover .card-actions { opacity: 1; }
 .card-actions button { padding: 0 6px; font-size: 11px; line-height: 18px; }
-.card-text { white-space: pre-wrap; overflow-wrap: anywhere; cursor: text; }
-.card-editor { width: 100%; min-height: 60px; resize: vertical; border: 1px solid var(--blue); border-radius: 6px; padding: 4px; }
+/* The card's text is its edit box, styled as plain text: click in and type. */
+.card-text { display: block; width: 100%; min-height: 1.45em; margin: 2px 0 0; padding: 0; border: 0; background: transparent; resize: none; overflow: hidden; line-height: 1.45; cursor: text; }
+.card-text:focus-visible { outline: none; }
+.card-text::placeholder { color: var(--muted); font-style: italic; }
+.card:focus-within { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(26, 111, 163, 0.15); }
+.card-head { cursor: grab; }
 .react-flow__edge.edge-ai .react-flow__edge-path { stroke-dasharray: 6 4; stroke: var(--ai); }
 .react-flow__edge-text { font-size: 12px; }
 .react-flow__controls, .react-flow__minimap { border-radius: 10px; overflow: hidden; border: 1px solid var(--line); }

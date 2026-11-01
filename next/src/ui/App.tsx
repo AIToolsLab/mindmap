@@ -183,7 +183,7 @@ export function App({ bearerToken, onAccessError, aiAccessDenied = false, onDisc
           <MapView map={session.map} readOnly={busy} editId={editId} setEditId={setEditId} actions={actions} />
         </ReactFlowProvider>
         {session.map.cards.length === 0 && <div className="map-empty muted">No cards yet</div>}
-        <div className="map-hint muted small">Double-click to edit · drop a card on another to nest · drag out or "Out" to separate · drag from a card's dot to link · select a link + Delete to remove</div>
+        <div className="map-hint muted small">Click a card's text to edit · drag a card by its top row · drop it on another to nest · drag out or "Out" to separate · drag from a card's dot to link · select a link + Delete to remove</div>
       </main>
 
       {showDraft && (

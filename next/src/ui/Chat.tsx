@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "re
 import { proposalLabel } from "../state/labels";
 import { blockedReason } from "../state/map";
 import type { Proposal, Session, TranscriptItem } from "../state/types";
+import { cardNumber } from "./CardNode";
 import { useSpeechToText } from "./useSpeechToText";
 
 interface Props {
@@ -53,7 +54,7 @@ function ToolLine({ item, session, busy, onAccept, onReject }: { item: Extract<T
           {item.ok && proposal && proposal.status !== "pending" && (
             <span className={`tool-status status-${proposal.status}`}>
               {STATUS[proposal.status]}
-              {"cardId" in proposal && proposal.cardId ? ` as ${proposal.cardId}` : ""}
+              {"cardId" in proposal && proposal.cardId ? ` as card ${cardNumber(proposal.cardId)}` : ""}
             </span>
           )}
           {!item.ok && (

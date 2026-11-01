@@ -53,7 +53,6 @@ export function MapView({ map, readOnly, editId, setEditId, actions }: Props) {
   const callbacks = useMemo(
     () => ({
       readOnly,
-      onStartEdit: (id: string) => setEditId(id),
       onFinishEdit: (id: string, text: string | null) => {
         setEditId(null);
         actions.finishEdit(id, text);

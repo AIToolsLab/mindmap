@@ -240,7 +240,7 @@ sessionless path, so v1 needs no sign-in.
 ## 8. What the writer sees
 
 - **Chat**, with each tool call as a small block: a top row with the tool name, its
-  label and **Accept**/**Reject** (or the outcome, e.g. "Accepted as c3"), and the full
+  label and **Accept**/**Reject** (or the outcome, e.g. "Accepted as card 3"), and the full
   text underneath at any length. Pending proposals stand out; decided ones fade back; a
   refusal is one quiet row whose reason opens on request (Nhyira, 11-01):
 
@@ -254,9 +254,11 @@ sessionless path, so v1 needs no sign-in.
   ```
 
 - **Map:** accepted proposals appear; pending ones are not on the map. Each card shows
-  its number (`c3`), the same id the coach sees in its state block, so "c3" in the chat
-  is that card; an accepted card proposal says which card it became ("Accepted as c3")
-  (Nhyira, 11-01).
+  its number (3 for the card the coach knows as `c3`; the instructions tell the coach
+  to say "card 3"), and an accepted card proposal says which card it became ("Accepted
+  as card 3"). A card's text is its edit box: click into it and type, Enter or clicking
+  away saves (one undo step), Escape reverts. The card is as tall as its text, so
+  nothing scrolls inside it; it is dragged by its top row (Nhyira, 11-01).
 - **Level picker:** a change applies from the next turn.
 - **Draft panel:** a box to paste the draft into. Drag its left edge to make it wider or
   narrower (arrow keys when the edge has focus, double-click to reset); the width is
