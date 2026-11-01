@@ -44,6 +44,7 @@ function ToolLine({ item, session, busy, onAccept, onReject }: { item: Extract<T
       {item.ok && proposal && proposal.status !== "pending" && (
         <span className={`tool-status status-${proposal.status}`} title={proposal.note}>
           {STATUS[proposal.status]}
+          {"cardId" in proposal && proposal.cardId ? ` as ${proposal.cardId}` : ""}
           {proposal.note ? ` · ${proposal.note}` : ""}
         </span>
       )}

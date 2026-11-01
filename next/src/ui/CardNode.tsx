@@ -49,6 +49,8 @@ export function CardNode({ data }: NodeProps<CardFlowNode>) {
     <div className={`card${data.hasChildren ? " card-parent" : ""}${card.provenance.kind === "ai_suggested" ? " card-ai" : ""}`}>
       <Handle type="target" position={Position.Left} />
       <div className="card-head">
+        {/* The card's id, the same number the coach sees, so "c3" in the chat is this card. */}
+        <span className="card-num" title={`Card ${card.id}`}>{card.id}</span>
         {badges.map((b) => (
           <span key={b} className="badge">{b}</span>
         ))}

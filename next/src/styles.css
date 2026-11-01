@@ -33,13 +33,20 @@ button:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2p
 .small { font-size: 12px; }
 
 .app {
+  --chat-w: clamp(340px, 30vw, 480px);
   height: 100%;
   display: grid;
-  grid-template-columns: clamp(340px, 30vw, 480px) minmax(0, 1fr);
+  grid-template-columns: var(--chat-w) minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr);
   grid-template-areas: "bar bar" "chat map";
 }
-.app.with-draft { grid-template-columns: clamp(340px, 30vw, 480px) minmax(0, 1fr) 320px; grid-template-areas: "bar bar bar" "chat map draft"; }
+/* The draft is as wide as the writer dragged it (--draft-w, set by App), but never
+   leaves the map less than 280px if the window gets narrower. */
+.app.with-draft {
+  grid-template-columns: var(--chat-w) minmax(0, 1fr) min(var(--draft-w, 320px), max(240px, calc(100vw - var(--chat-w) - 280px)));
+  grid-template-areas: "bar bar bar" "chat map draft";
+}
+body.resizing { cursor: col-resize; user-select: none; }
 
 .toolbar {
   grid-area: bar;
@@ -122,6 +129,7 @@ button:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2p
 .card-ai { border-color: #c9b8dc; }
 .react-flow__node.selected > .card { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(26, 111, 163, 0.15); }
 .card-head { display: flex; align-items: center; gap: 4px; min-height: 22px; }
+.card-num { font-size: 10.5px; font-weight: 600; color: var(--muted); font-variant-numeric: tabular-nums; margin-right: 2px; }
 .badge { font-size: 10.5px; padding: 1px 6px; border-radius: 999px; background: #f1edf6; color: var(--ai); }
 .card-actions { margin-left: auto; display: flex; gap: 4px; opacity: 0.55; }
 .card:hover .card-actions { opacity: 1; }
@@ -163,7 +171,12 @@ button:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2p
 }
 
 /* Draft */
-.draft { grid-area: draft; display: flex; flex-direction: column; min-height: 0; border-left: 1px solid var(--line); background: #fff; }
+.draft { grid-area: draft; position: relative; display: flex; flex-direction: column; min-height: 0; border-left: 1px solid var(--line); background: #fff; }
+/* A strip over the draft's left border: drag it to resize the draft. */
+.draft-resizer { position: absolute; top: 0; bottom: 0; left: -4px; width: 8px; z-index: 6; cursor: col-resize; touch-action: none; }
+.draft-resizer::after { content: ""; position: absolute; top: 0; bottom: 0; left: 3px; width: 2px; background: transparent; transition: background 0.15s; }
+.draft-resizer:hover::after, .draft-resizer:focus-visible::after, body.resizing .draft-resizer::after { background: var(--blue); }
+.draft-resizer:focus-visible { outline: none; }
 .draft-head { padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; border-bottom: 1px solid var(--line); }
 .draft textarea { flex: 1; border: 0; padding: 12px; resize: none; }
 
@@ -181,4 +194,5 @@ button:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2p
 @media (max-width: 900px) {
   .app, .app.with-draft { grid-template-columns: 1fr; grid-template-rows: auto 45vh minmax(0, 1fr) auto; grid-template-areas: "bar" "map" "chat" "draft"; }
   .draft { max-height: 30vh; }
+  .draft-resizer { display: none; }
 }

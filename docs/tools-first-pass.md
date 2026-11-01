@@ -241,9 +241,14 @@ sessionless path, so v1 needs no sign-in.
   That sounds like the reason behind your doubt…
   ```
 
-- **Map:** accepted proposals appear; pending ones are not on the map.
+- **Map:** accepted proposals appear; pending ones are not on the map. Each card shows
+  its number (`c3`), the same id the coach sees in its state block, so "c3" in the chat
+  is that card; an accepted card proposal says which card it became ("Accepted as c3")
+  (Nhyira, 11-01).
 - **Level picker:** a change applies from the next turn.
-- **Draft panel:** a box to paste the draft into.
+- **Draft panel:** a box to paste the draft into. Drag its left edge to make it wider or
+  narrower (arrow keys when the edge has focus, double-click to reset); the width is
+  remembered in this browser, and the map always keeps at least 280px (Nhyira, 11-01).
 - **Copy map** and **copy draft** out.
 - **Voice input (Nhyira, 11-01):** a mic button above Send, using the browser's own
   speech recognition (the current app's `useSpeechToText`; Chrome, Edge and Safari, not
