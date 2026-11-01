@@ -39,7 +39,7 @@ the rules are stated, and enforced only when an action executes.
 | `suggest_idea` below L2 | Offered, always refused, so the model learns the boundary and draws the idea out of the writer instead. The instructions and the tool description also say up front that it is refused (Nhyira, 10-28): the prompt tells the model it won't work, so it doesn't waste an attempt, and the handler's refusal stays as the real check in case it tries anyway or ignores the prompt. So the coach declining in words at L0 without trying the tool is expected. |
 | Memory between calls | None. Every call is stateless and sends everything (section 7), ordered so the provider's prompt cache covers the repeated part. No provider-side conversation storage. |
 | Suggestion adoption | Behind an on/off setting. Measured by shared runs of three or more words, not today's common-word list (see §9). The list is the fallback if runs prove problematic. |
-| Out of v1 | i18n, a restating tool, working memory, the fuzz harness (after v1), L3 (after v1), the Think/Map slider, steering buttons, voice, Control Room diagnostics, sign-in and deploy. |
+| Out of v1 | i18n, a restating tool, working memory, the fuzz harness (after v1), L3 (after v1), the Think/Map slider, steering buttons, voice (added 11-01, see §8), Control Room diagnostics, sign-in and deploy. |
 
 ## 3. Levels
 
@@ -245,6 +245,11 @@ sessionless path, so v1 needs no sign-in.
 - **Level picker:** a change applies from the next turn.
 - **Draft panel:** a box to paste the draft into.
 - **Copy map** and **copy draft** out.
+- **Voice input (Nhyira, 11-01):** a mic button above Send, using the browser's own
+  speech recognition (the current app's `useSpeechToText`; Chrome, Edge and Safari, not
+  Firefox). Spoken words go into the message box, never straight to the coach: the
+  writer reads, edits and sends them like typed text. Typing or Send stops dictation.
+  Better transcription through the backend (punctuation, fewer fillers) is postponed.
 
 Keep it simple: no extra panels or diagnostics in v1.
 

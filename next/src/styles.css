@@ -92,8 +92,16 @@ button:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2p
 .tool-why > div { padding: 4px 0 2px 14px; }
 .composer { display: flex; gap: 8px; padding: 10px 12px 4px; border-top: 1px solid var(--line); }
 .composer textarea { flex: 1; min-height: 76px; max-height: 40vh; overflow-y: auto; resize: none; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; line-height: 1.45; }
-.composer .send { align-self: flex-end; background: var(--blue); border-color: var(--blue); color: #fff; }
+/* Mic above Send, both at the bottom of the box as it grows. */
+.composer-buttons { display: flex; flex-direction: column; justify-content: flex-end; gap: 6px; }
+.composer .send { background: var(--blue); border-color: var(--blue); color: #fff; }
 .composer .send:hover:not(:disabled) { background: #155d89; }
+.composer .mic { display: grid; place-items: center; padding: 5px 10px; }
+.composer .mic svg { width: 18px; height: 18px; stroke-width: 1.8; }
+.composer .mic.live { background: var(--red); border-color: var(--red); color: #fff; animation: mic-live 1.6s ease-in-out infinite; }
+.composer .mic.live:hover:not(:disabled) { background: #8a2f22; }
+@keyframes mic-live { 50% { box-shadow: 0 0 0 4px rgba(163, 58, 42, 0.18); } }
+@media (prefers-reduced-motion: reduce) { .composer .mic.live { animation: none; } }
 .hint { padding: 0 12px 8px; font-size: 11px; }
 
 /* Map */

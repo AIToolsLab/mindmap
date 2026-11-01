@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "re
 import { proposalLabel } from "../state/labels";
 import { blockedReason } from "../state/map";
 import type { Proposal, Session, TranscriptItem } from "../state/types";
+import { useSpeechToText } from "./useSpeechToText";
 
 interface Props {
   session: Session;
@@ -59,6 +60,18 @@ function ToolLine({ item, session, busy, onAccept, onReject }: { item: Extract<T
   );
 }
 
+/** Same icon as the current app's dictation button. */
+function MicIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Z" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M5 11a7 7 0 0 0 14 0" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M12 18v3" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M8 21h8" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 /**
  * The coach sometimes writes **bold**; show it as bold instead of asterisks. Display
  * formatting only (React escapes the text), nothing else from Markdown.
@@ -73,25 +86,56 @@ export function Chat({ session, busy, sendDisabled = false, onSend, onAccept, on
   const [text, setText] = useState("");
   const end = useRef<HTMLDivElement>(null);
   const box = useRef<HTMLTextAreaElement>(null);
+  const speech = useSpeechToText();
 
   // The message box grows with what's typed, up to a cap set in CSS (max-height).
+  // While dictating it also keeps the newest words in view.
   useLayoutEffect(() => {
     const el = box.current;
     if (!el) return;
     el.style.height = "auto";
     el.style.height = `${el.scrollHeight + 2}px`;
-  }, [text]);
+    if (speech.listening) el.scrollTop = el.scrollHeight;
+  }, [text, speech.listening]);
   // Braces matter: scrollIntoView() returns a Promise in current Chrome, and an effect
   // must return nothing or a cleanup function.
   useEffect(() => {
     end.current?.scrollIntoView({ block: "end" });
   }, [session.transcript.length, busy]);
 
+  // While dictating, the box shows what was there when dictation started, then the
+  // words heard so far. The writer reads and edits it before sending; nothing is sent
+  // by voice alone.
+  useEffect(() => {
+    if (!speech.transcript && !speech.interim) return;
+    setText(`${speech.transcript} ${speech.interim}`.trim());
+  }, [speech.transcript, speech.interim]);
+
+  /** Typing takes over from dictation, so a late result can't overwrite what was typed. */
+  const type = (value: string) => {
+    if (speech.listening) speech.stop();
+    speech.reset();
+    setText(value);
+  };
+
+  const toggleVoice = () => {
+    if (speech.listening) speech.stop();
+    else speech.start(text);
+  };
+
   const send = () => {
     if (busy || sendDisabled || !text.trim()) return;
+    if (speech.listening) speech.stop();
+    speech.reset();
     onSend(text);
     setText("");
   };
+
+  const voiceLabel = !speech.supported
+    ? "Voice input isn't available in this browser"
+    : speech.listening
+      ? "Stop voice input"
+      : "Start voice input";
 
   return (
     <section className="chat" aria-label="Chat">
@@ -116,7 +160,7 @@ export function Chat({ session, busy, sendDisabled = false, onSend, onAccept, on
           aria-label="Message"
           placeholder="Say what's on your mind…"
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => type(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
@@ -124,11 +168,26 @@ export function Chat({ session, busy, sendDisabled = false, onSend, onAccept, on
             }
           }}
         />
-        <button type="button" className="send" disabled={busy || sendDisabled || !text.trim()} onClick={send}>
-          Send
-        </button>
+        <div className="composer-buttons">
+          <button
+            type="button"
+            className={`mic${speech.listening ? " live" : ""}`}
+            aria-pressed={speech.listening}
+            aria-label={voiceLabel}
+            title={voiceLabel}
+            disabled={!speech.supported}
+            onClick={toggleVoice}
+          >
+            <MicIcon />
+          </button>
+          <button type="button" className="send" disabled={busy || sendDisabled || !text.trim()} onClick={send}>
+            Send
+          </button>
+        </div>
       </div>
-      <div className="hint muted">Enter to send · Shift+Enter for a new line</div>
+      <div className="hint muted" aria-live="polite">
+        {speech.listening ? "Listening… your words go into the box. Typing or the mic button stops it." : "Enter to send · Shift+Enter for a new line"}
+      </div>
     </section>
   );
 }
