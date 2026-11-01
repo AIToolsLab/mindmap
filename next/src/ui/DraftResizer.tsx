@@ -36,6 +36,14 @@ function chatWidth(el: Element): number {
 }
 
 /**
+ * The draft's width as drawn. It can be less than the saved width when the window got
+ * narrower (CSS min()), and resizing has to start from what the writer sees.
+ */
+function drawnWidth(el: Element, saved: number): number {
+  return el.closest(".draft")?.getBoundingClientRect().width || saved;
+}
+
+/**
  * The draft panel's left edge: drag it to make the draft wider or narrower, use the
  * arrow keys when it has focus, or double-click it to go back to the default width.
  */
@@ -54,7 +62,7 @@ export function DraftResizer({ width, onResize }: { width: number; onResize: (wi
     const change = e.key === "ArrowLeft" ? KEY_STEP : e.key === "ArrowRight" ? -KEY_STEP : 0;
     if (!change) return;
     e.preventDefault();
-    onResize(clampDraftWidth(width + change, window.innerWidth, chatWidth(e.currentTarget)));
+    onResize(clampDraftWidth(drawnWidth(e.currentTarget, width) + change, window.innerWidth, chatWidth(e.currentTarget)));
   };
 
   return (
@@ -70,7 +78,7 @@ export function DraftResizer({ width, onResize }: { width: number; onResize: (wi
       onPointerDown={(e) => {
         e.preventDefault();
         e.currentTarget.setPointerCapture(e.pointerId);
-        drag.current = { x: e.clientX, width, chat: chatWidth(e.currentTarget) };
+        drag.current = { x: e.clientX, width: drawnWidth(e.currentTarget, width), chat: chatWidth(e.currentTarget) };
         document.body.classList.add("resizing");
       }}
       onPointerMove={(e) => {
