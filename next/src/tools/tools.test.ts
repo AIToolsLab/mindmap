@@ -131,14 +131,6 @@ describe("propose_link and propose_nest: the evidence rule", () => {
     const r = run(proposeLink, { from_card: "c1", to_card: "c2", label: "and", evidence: ["I like X"] }, s);
     expect(r.ok).toBe(false);
   });
-
-  it("can link to a card proposed earlier in the same turn", () => {
-    let s = session(["I like X because X is bad"]);
-    s = apply(s, run(proposeCard, { pieces: ["I like X"] }, s));
-    s = apply(s, run(proposeCard, { pieces: ["X is bad"] }, s));
-    expect(run(proposeLink, { from_card: "p1", to_card: "p2", label: "because", evidence: ["I like X because X is bad"] }, s).ok).toBe(true);
-  });
-
   it("allows free links at L2, shown as AI suggested", () => {
     const s = withCards(["I like X", "Y matters"], "I like X", "Y matters", 2);
     const r = run(proposeLink, { from_card: "c1", to_card: "c2", label: "leads to", evidence: [] }, s);
@@ -164,6 +156,36 @@ describe("propose_link and propose_nest: the evidence rule", () => {
   it("refuses nesting without evidence at L0", () => {
     const s = withCards(["I like X", "Y matters"], "I like X", "Y matters");
     expect(run(proposeNest, { child: "c2", parent: "c1", evidence: [] }, s).ok).toBe(false);
+  });
+});
+
+describe("only cards on the map can be linked, nested or placed near (Nhyira, 11-01)", () => {
+  // Two card proposals the writer hasn't decided on yet.
+  function pendingCards(level: Level = 0): Session {
+    let s = session(["I like X because X is bad"], { level });
+    s = apply(s, run(proposeCard, { pieces: ["I like X"] }, s));
+    return apply(s, run(proposeCard, { pieces: ["X is bad"] }, s));
+  }
+
+  it("refuses a link to a card the writer hasn't accepted, and says why", () => {
+    const r = run(proposeLink, { from_card: "p1", to_card: "p2", label: "because", evidence: ["I like X because X is bad"] }, pendingCards());
+    expect(r).toMatchObject({ ok: false, reason: "p1 isn't on the map: the writer hasn't accepted it. Only cards on the map can be used here." });
+  });
+
+  it("refuses it at L2 too, where links are otherwise free", () => {
+    expect(run(proposeLink, { from_card: "p1", to_card: "p2", label: "could use", evidence: [] }, pendingCards(2)).ok).toBe(false);
+  });
+
+  it("refuses nesting under, and suggestions near, a card the writer hasn't accepted", () => {
+    expect(run(proposeNest, { child: "p2", parent: "p1", evidence: ["I like X because X is bad"] }, pendingCards()).ok).toBe(false);
+    expect(run(suggestIdea, { text: "Try Z", near_card: "p1" }, pendingCards(2)).ok).toBe(false);
+  });
+
+  it("links them once both are accepted, by their card ids", () => {
+    const s = acceptProposal(acceptProposal(pendingCards(), "p1"), "p2");
+    expect(run(proposeLink, { from_card: "c1", to_card: "c2", label: "because", evidence: ["I like X because X is bad"] }, s).ok).toBe(true);
+    // The proposal id of an accepted card points the model to its card id.
+    expect(run(proposeLink, { from_card: "p1", to_card: "c2", label: "because", evidence: ["I like X because X is bad"] }, s)).toMatchObject({ ok: false, reason: "p1 is on the map as c1; use c1." });
   });
 });
 
@@ -230,5 +252,53 @@ describe("typos (Nhyira, option A: quote exactly as typed)", () => {
 
   it("tells the model to quote typos as typed", () => {
     expect(proposeCard.description(0)).toContain("typos included");
+  });
+});
+
+describe("punctuation is ignored (Nhyira, 11-01: for dictated text)", () => {
+  // Dictation gives words with little or no punctuation.
+  const spoken = session(["so i think the main problem with remote work is that nobody sees the small wins um and that makes people feel invisible"]);
+
+  it("accepts punctuation the writer didn't type", () => {
+    expect(run(proposeCard, { pieces: ["nobody sees the small wins."] }, spoken).ok).toBe(true);
+    expect(run(proposeCard, { pieces: ["the main problem with remote work, is that nobody sees"] }, spoken).ok).toBe(true);
+    expect(run(proposeCard, { pieces: ["“the small wins”"] }, spoken).ok).toBe(true);
+  });
+
+  it("accepts a piece without the punctuation the writer did type", () => {
+    const s = session(["Cost, mostly. And time; the well-known kind."]);
+    expect(run(proposeCard, { pieces: ["cost mostly and time"] }, s).ok).toBe(true);
+    expect(run(proposeCard, { pieces: ["the well known kind"] }, s).ok).toBe(true);
+  });
+
+  it("drops apostrophes, so don't and dont match both ways", () => {
+    expect(run(proposeCard, { pieces: ["I don't like it"] }, session(["i dont like it"])).ok).toBe(true);
+    expect(run(proposeCard, { pieces: ["I dont like it"] }, session(["I don’t like it"])).ok).toBe(true);
+  });
+
+  it("still compares every letter, word boundaries and fillers", () => {
+    expect(run(proposeCard, { pieces: ["I do now like it"] }, session(["I do not like it."])).ok).toBe(false);
+    expect(run(proposeCard, { pieces: ["ike it"] }, session(["I like it."])).ok).toBe(false);
+    // Leaving out a filler still needs two pieces around it.
+    expect(run(proposeCard, { pieces: ["the small wins and that makes people feel invisible"] }, spoken).ok).toBe(false);
+    expect(run(proposeCard, { pieces: ["the small wins", "and that makes people feel invisible"] }, spoken).ok).toBe(true);
+  });
+
+  it("refuses a piece that is only punctuation", () => {
+    const r = run(proposeCard, { pieces: ["..."] }, spoken);
+    expect(!r.ok && r.reason).toBe("Every piece needs at least one word.");
+  });
+
+  it("treats a card that differs only in punctuation as a duplicate", () => {
+    let s = session(["the real cost is time"]);
+    s = { ...s, map: { cards: [{ id: "c1", text: "The real cost is time.", parentId: null, provenance: { kind: "user" }, x: 0, y: 0 }], links: [] } };
+    const r = run(proposeCard, { pieces: ["the real cost is time"] }, s);
+    expect(!r.ok && r.reason).toContain("already on the map");
+  });
+
+  it("still links a card after the writer adds punctuation to it", () => {
+    let s = spoken;
+    s = { ...s, map: { cards: [{ id: "c1", text: "Remote work", parentId: null, provenance: { kind: "user" }, x: 0, y: 0 }, { id: "c2", text: "Nobody sees the small wins.", parentId: null, provenance: { kind: "user" }, x: 0, y: 0 }], links: [] } };
+    expect(run(proposeLink, { from_card: "c1", to_card: "c2", label: "is that", evidence: ["remote work is that nobody sees the small wins"] }, s).ok).toBe(true);
   });
 });

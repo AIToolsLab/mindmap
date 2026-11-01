@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { MapState } from "../state/types";
 import { buildEdges, buildNodes, CARD_W } from "./flow";
 
-const noop = { readOnly: false, onStartEdit: () => {}, onFinishEdit: () => {}, onDelete: () => {}, onTakeOut: () => {} };
+const noop = { readOnly: false, onFinishEdit: () => {}, onDelete: () => {}, onTakeOut: () => {} };
 const card = (id: string, parentId: string | null, x = 0, y = 0) => ({ id, text: id, parentId, provenance: { kind: "user" as const }, x, y });
 
 describe("map → canvas", () => {

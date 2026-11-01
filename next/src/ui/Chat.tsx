@@ -2,6 +2,8 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "re
 import { proposalLabel } from "../state/labels";
 import { blockedReason } from "../state/map";
 import type { Proposal, Session, TranscriptItem } from "../state/types";
+import { cardNumber } from "./CardNode";
+import { useSpeechToText } from "./useSpeechToText";
 
 interface Props {
   session: Session;
@@ -19,43 +21,70 @@ const STATUS: Record<Exclude<Proposal["status"], "pending">, string> = {
   dropped: "Dropped",
 };
 
-/** One line per tool call (spec §8): name, summary, then Accept/Reject or the outcome. */
+/**
+ * One tool call (spec §8): a top row with the tool, its label and Accept/Reject (or the
+ * outcome), and the proposal's text underneath at any length. Pending proposals stand
+ * out; decided ones fade back; a refusal is one quiet row with its reason on request.
+ */
 function ToolLine({ item, session, busy, onAccept, onReject }: { item: Extract<TranscriptItem, { kind: "tool" }> } & Omit<Props, "onSend" | "sendDisabled">) {
+  const [showWhy, setShowWhy] = useState(false);
   const proposal = item.proposalId ? session.proposals.find((p) => p.id === item.proposalId) : undefined;
-  const blocked = proposal?.status === "pending" ? blockedReason(session, proposal) : undefined;
+  const pending = item.ok && proposal?.status === "pending";
+  // Only sessions saved before links needed cards on the map can still be blocked.
+  const blocked = pending && proposal ? blockedReason(session, proposal) : undefined;
   const label = proposal ? proposalLabel(proposal) : null;
+  const state = !item.ok ? "tool-refused" : pending ? "tool-pending" : "tool-decided";
   return (
-    <div className={`tool-line ${item.ok ? "tool-ok" : "tool-refused"}`}>
-      <span className="tool-mark" aria-hidden>{item.ok ? "✓" : "✕"}</span>
-      <span className="tool-name">{item.name}</span>
-      <span className="tool-summary">· {item.ok ? item.summary : "refused"}</span>
-      {label && <span className="badge">{label}</span>}
-      {item.ok && proposal?.status === "pending" && (
-        <span className="tool-buttons">
-          <button type="button" className="accept" disabled={busy || !!blocked} title={blocked} onClick={() => onAccept(proposal.id)}>
-            Accept
-          </button>
-          <button type="button" disabled={busy} onClick={() => onReject(proposal.id)}>
-            Reject
-          </button>
+    <div className={`tool-line ${state}`}>
+      <div className="tool-head">
+        <span className="tool-mark" aria-hidden>{item.ok ? "✓" : "✕"}</span>
+        <span className="tool-name">{item.name}</span>
+        {label && <span className="badge">{label}</span>}
+        <span className="tool-end">
+          {pending && proposal && (
+            <>
+              <button type="button" className="accept" disabled={busy || !!blocked} title={blocked} onClick={() => onAccept(proposal.id)}>
+                Accept
+              </button>
+              <button type="button" disabled={busy} onClick={() => onReject(proposal.id)}>
+                Reject
+              </button>
+            </>
+          )}
+          {item.ok && proposal && proposal.status !== "pending" && (
+            <span className={`tool-status status-${proposal.status}`}>
+              {STATUS[proposal.status]}
+              {"cardId" in proposal && proposal.cardId ? ` as card ${cardNumber(proposal.cardId)}` : ""}
+            </span>
+          )}
+          {!item.ok && (
+            <button type="button" className="tool-why-toggle" aria-expanded={showWhy} onClick={() => setShowWhy((v) => !v)}>
+              refused · {showWhy ? "hide" : "why"}
+            </button>
+          )}
         </span>
-      )}
-      {item.ok && proposal && proposal.status !== "pending" && (
-        <span className={`tool-status status-${proposal.status}`} title={proposal.note}>
-          {STATUS[proposal.status]}
-          {proposal.note ? ` · ${proposal.note}` : ""}
-        </span>
-      )}
-      {!item.ok && (
-        <details className="tool-why">
-          <summary>why</summary>
-          <div>
-            <div className="muted">{item.summary}</div>
-            {item.reason}
-          </div>
-        </details>
+      </div>
+      {item.ok && <div className="tool-text">{item.summary}</div>}
+      {item.ok && proposal?.note && <div className="tool-note">{proposal.note}</div>}
+      {!item.ok && showWhy && (
+        <div className="tool-why">
+          <div className="tool-text">{item.summary}</div>
+          {item.reason}
+        </div>
       )}
     </div>
+  );
+}
+
+/** Same icon as the current app's dictation button. */
+function MicIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Z" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M5 11a7 7 0 0 0 14 0" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M12 18v3" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M8 21h8" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
 }
 
@@ -73,25 +102,56 @@ export function Chat({ session, busy, sendDisabled = false, onSend, onAccept, on
   const [text, setText] = useState("");
   const end = useRef<HTMLDivElement>(null);
   const box = useRef<HTMLTextAreaElement>(null);
+  const speech = useSpeechToText();
 
   // The message box grows with what's typed, up to a cap set in CSS (max-height).
+  // While dictating it also keeps the newest words in view.
   useLayoutEffect(() => {
     const el = box.current;
     if (!el) return;
     el.style.height = "auto";
     el.style.height = `${el.scrollHeight + 2}px`;
-  }, [text]);
+    if (speech.listening) el.scrollTop = el.scrollHeight;
+  }, [text, speech.listening]);
   // Braces matter: scrollIntoView() returns a Promise in current Chrome, and an effect
   // must return nothing or a cleanup function.
   useEffect(() => {
     end.current?.scrollIntoView({ block: "end" });
   }, [session.transcript.length, busy]);
 
+  // While dictating, the box shows what was there when dictation started, then the
+  // words heard so far. The writer reads and edits it before sending; nothing is sent
+  // by voice alone.
+  useEffect(() => {
+    if (!speech.transcript && !speech.interim) return;
+    setText(`${speech.transcript} ${speech.interim}`.trim());
+  }, [speech.transcript, speech.interim]);
+
+  /** Typing takes over from dictation, so a late result can't overwrite what was typed. */
+  const type = (value: string) => {
+    if (speech.listening) speech.stop();
+    speech.reset();
+    setText(value);
+  };
+
+  const toggleVoice = () => {
+    if (speech.listening) speech.stop();
+    else speech.start(text);
+  };
+
   const send = () => {
     if (busy || sendDisabled || !text.trim()) return;
+    if (speech.listening) speech.stop();
+    speech.reset();
     onSend(text);
     setText("");
   };
+
+  const voiceLabel = !speech.supported
+    ? "Voice input isn't available in this browser"
+    : speech.listening
+      ? "Stop voice input"
+      : "Start voice input";
 
   return (
     <section className="chat" aria-label="Chat">
@@ -116,7 +176,7 @@ export function Chat({ session, busy, sendDisabled = false, onSend, onAccept, on
           aria-label="Message"
           placeholder="Say what's on your mind…"
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => type(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
@@ -124,11 +184,26 @@ export function Chat({ session, busy, sendDisabled = false, onSend, onAccept, on
             }
           }}
         />
-        <button type="button" className="send" disabled={busy || sendDisabled || !text.trim()} onClick={send}>
-          Send
-        </button>
+        <div className="composer-buttons">
+          <button
+            type="button"
+            className={`mic${speech.listening ? " live" : ""}`}
+            aria-pressed={speech.listening}
+            aria-label={voiceLabel}
+            title={voiceLabel}
+            disabled={!speech.supported}
+            onClick={toggleVoice}
+          >
+            <MicIcon />
+          </button>
+          <button type="button" className="send" disabled={busy || sendDisabled || !text.trim()} onClick={send}>
+            Send
+          </button>
+        </div>
       </div>
-      <div className="hint muted">Enter to send · Shift+Enter for a new line</div>
+      <div className="hint muted" aria-live="polite">
+        {speech.listening ? "Listening… your words go into the box. Typing or the mic button stops it." : "Enter to send · Shift+Enter for a new line"}
+      </div>
     </section>
   );
 }

@@ -25,6 +25,15 @@ describe("proposals", () => {
     expect(s.proposals.map((p) => p.status)).toEqual(["rejected", "dropped"]);
   });
 
+  it("deleting a card drops the pending link that named it, so no Accept is left that can't work", () => {
+    let s = addCard(addCard(withProposals([]), "A"), "B");
+    s = { ...s, proposals: [{ id: "p1", status: "pending", kind: "link", from: "c1", to: "c2", label: "so", provenance: { kind: "ai_suggested" } }] };
+    s = deleteCard(s, "c2");
+    expect(s.proposals[0]).toMatchObject({ status: "dropped", note: "Its card was deleted." });
+    // Undo brings the card back and the link with it.
+    expect(undo(s).proposals[0]?.status).toBe("pending");
+  });
+
   it("an accepted suggestion becomes an AI-suggested card", () => {
     const s = acceptProposal(withProposals([{ id: "p1", status: "pending", kind: "suggestion", text: "Try Z", nearCard: null }]), "p1");
     expect(s.map.cards[0]?.provenance).toEqual({ kind: "ai_suggested" });

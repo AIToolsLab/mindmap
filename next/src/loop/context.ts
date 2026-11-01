@@ -42,6 +42,7 @@ export function instructions(level: Level): string {
     "",
     "If the writer declined something, don't raise it again.",
     "Reply to the writer in plain, short messages.",
+    "The writer sees cards numbered 1, 2, 3. If you mention one, say \"card 3\", not its id c3.",
   ].join("\n");
 }
 

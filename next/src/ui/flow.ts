@@ -38,7 +38,7 @@ export function isInside(map: MapState, id: string, ancestor: string): boolean {
 }
 
 // Pick, not Omit: CardNodeData has an index signature, which Omit would flatten.
-type Callbacks = Pick<CardNodeData, "readOnly" | "onStartEdit" | "onFinishEdit" | "onDelete" | "onTakeOut">;
+type Callbacks = Pick<CardNodeData, "readOnly" | "onFinishEdit" | "onDelete" | "onTakeOut">;
 
 /**
  * Nodes for the map, parents before children (React Flow requires it). Keeps each

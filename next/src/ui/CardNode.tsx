@@ -1,14 +1,14 @@
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { provenanceLabel, structureLabel } from "../state/labels";
 import type { Card } from "../state/types";
 
 export interface CardNodeData extends Record<string, unknown> {
   card: Card;
   hasChildren: boolean;
+  /** Put the caret in this card now (a card just made with "+ Card"). */
   editing: boolean;
   readOnly: boolean;
-  onStartEdit: (id: string) => void;
   onFinishEdit: (id: string, text: string | null) => void;
   onDelete: (id: string) => void;
   onTakeOut: (id: string) => void;
@@ -16,25 +16,43 @@ export interface CardNodeData extends Record<string, unknown> {
 
 export type CardFlowNode = Node<CardNodeData, "card">;
 
-/** One card. A card with children is drawn as a box that holds them (visual nesting). */
+/** The number the writer sees for a card: c3 is card 3. */
+export function cardNumber(id: string): string {
+  return id.replace(/^c/, "");
+}
+
+/**
+ * One card. Its text is the edit box: click into it and type, as in any text field.
+ * The card is as tall as its text, so nothing scrolls inside it. Drag a card by its top
+ * row or edge. A card with children is drawn as a box that holds them (visual nesting).
+ */
 export function CardNode({ data }: NodeProps<CardFlowNode>) {
   const { card, editing, readOnly } = data;
   const [text, setText] = useState(card.text);
+  const [focused, setFocused] = useState(false);
+  /** A parent's title is longer than the lines it shows over its children. */
+  const [clipped, setClipped] = useState(false);
   const cancelled = useRef(false);
-  const editor = useRef<HTMLTextAreaElement>(null);
+  const box = useRef<HTMLTextAreaElement>(null);
 
+  // Show changes made elsewhere (undo, the coach's turn), but never under the writer's caret.
   useEffect(() => {
-    if (editing) {
-      setText(card.text);
-      cancelled.current = false;
-    }
-  }, [editing, card.text]);
+    if (!focused) setText(card.text);
+  }, [card.text, focused]);
 
-  // React Flow mounts a new node hidden until it's measured, so `autoFocus` alone misses;
-  // focus once it's shown, or typing goes to whatever button still has focus.
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+    setClipped(data.hasChildren && !focused && el.scrollHeight > el.clientHeight + 1);
+  }, [text, focused, data.hasChildren]);
+
+  // React Flow shows a new node only once it's measured, so focusing at once can miss;
+  // try again shortly after, or typing goes to whatever button still has focus.
   useEffect(() => {
     if (!editing) return;
-    const timers = [0, 50, 150].map((ms) => setTimeout(() => editor.current?.focus(), ms));
+    const timers = [0, 50, 150].map((ms) => setTimeout(() => box.current?.focus(), ms));
     return () => timers.forEach(clearTimeout);
   }, [editing]);
 
@@ -43,12 +61,11 @@ export function CardNode({ data }: NodeProps<CardFlowNode>) {
     card.parentId && structureLabel(card.parentProvenance) ? "Nesting AI suggested" : null,
   ].filter((b): b is string => !!b);
 
-  const finish = () => data.onFinishEdit(card.id, cancelled.current || text === card.text ? null : text);
-
   return (
     <div className={`card${data.hasChildren ? " card-parent" : ""}${card.provenance.kind === "ai_suggested" ? " card-ai" : ""}`}>
       <Handle type="target" position={Position.Left} />
       <div className="card-head">
+        <span className="card-num" title={`Card ${cardNumber(card.id)}`}>{cardNumber(card.id)}</span>
         {badges.map((b) => (
           <span key={b} className="badge">{b}</span>
         ))}
@@ -65,29 +82,35 @@ export function CardNode({ data }: NodeProps<CardFlowNode>) {
           </span>
         )}
       </div>
-      {editing ? (
-        <textarea
-          ref={editor}
-          className="card-editor nodrag nowheel"
-          autoFocus
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onBlur={finish}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              e.currentTarget.blur();
-            } else if (e.key === "Escape") {
-              cancelled.current = true;
-              e.currentTarget.blur();
-            }
-          }}
-        />
-      ) : (
-        <div className="card-text" title={readOnly ? undefined : "Double-click to edit"} onDoubleClick={() => !readOnly && data.onStartEdit(card.id)}>
-          {card.text || <em className="muted">Double-click to write</em>}
-        </div>
-      )}
+      <textarea
+        ref={box}
+        className={`card-text nodrag${clipped ? " clipped" : ""}`}
+        rows={1}
+        aria-label={`Card ${cardNumber(card.id)}`}
+        placeholder="Write here"
+        value={text}
+        readOnly={readOnly}
+        onChange={(e) => setText(e.target.value)}
+        onFocus={() => {
+          cancelled.current = false;
+          setFocused(true);
+        }}
+        // Saved when the writer clicks away (one undo step per edit), or with Enter.
+        onBlur={() => {
+          setFocused(false);
+          data.onFinishEdit(card.id, cancelled.current || text === card.text ? null : text);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            e.currentTarget.blur();
+          } else if (e.key === "Escape") {
+            cancelled.current = true;
+            setText(card.text);
+            e.currentTarget.blur();
+          }
+        }}
+      />
       <Handle type="source" position={Position.Right} />
     </div>
   );

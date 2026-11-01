@@ -1,5 +1,5 @@
 import { ReactFlowProvider } from "@xyflow/react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { makeCallResponses } from "../loop/client";
 import { runTurn } from "../loop/turn";
 import { mapToMarkdown } from "../state/export";
@@ -20,6 +20,7 @@ import { loadSession, saveSession } from "../state/persist";
 import { emptySession, type Level, type Session } from "../state/types";
 import { Chat } from "./Chat";
 import { copyText } from "./clipboard";
+import { DraftResizer, loadDraftWidth, saveDraftWidth } from "./DraftResizer";
 import { MapView, type MapActions } from "./MapView";
 
 const LEVELS: { value: Level; label: string }[] = [
@@ -43,6 +44,7 @@ export function App({ bearerToken, onAccessError, aiAccessDenied = false, onDisc
   const [busy, setBusy] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [showDraft, setShowDraft] = useState(true);
+  const [draftWidth, setDraftWidth] = useState(loadDraftWidth);
   const [flash, setFlash] = useState<string | null>(null);
   const [saved, setSaved] = useState(true);
 
@@ -57,6 +59,10 @@ export function App({ bearerToken, onAccessError, aiAccessDenied = false, onDisc
   useEffect(() => {
     setSaved(saveSession(session));
   }, [session]);
+
+  useEffect(() => {
+    saveDraftWidth(draftWidth);
+  }, [draftWidth]);
 
   useEffect(() => {
     if (!flash) return;
@@ -137,7 +143,7 @@ export function App({ bearerToken, onAccessError, aiAccessDenied = false, onDisc
   };
 
   return (
-    <div className={`app${showDraft ? " with-draft" : ""}`}>
+    <div className={`app${showDraft ? " with-draft" : ""}`} style={{ "--draft-w": `${draftWidth}px` } as CSSProperties}>
       <header className="toolbar">
         <label className="level">
           <span>Level</span>
@@ -177,11 +183,12 @@ export function App({ bearerToken, onAccessError, aiAccessDenied = false, onDisc
           <MapView map={session.map} readOnly={busy} editId={editId} setEditId={setEditId} actions={actions} />
         </ReactFlowProvider>
         {session.map.cards.length === 0 && <div className="map-empty muted">No cards yet</div>}
-        <div className="map-hint muted small">Double-click to edit · drop a card on another to nest · drag out or "Out" to separate · drag from a card's dot to link · select a link + Delete to remove</div>
+        <div className="map-hint muted small">Click a card's text to edit · drag a card by its top row · drop it on another to nest · drag out or "Out" to separate · drag from a card's dot to link · select a link + Delete to remove</div>
       </main>
 
       {showDraft && (
         <aside className="draft" aria-label="Draft">
+          <DraftResizer width={draftWidth} onResize={setDraftWidth} />
           <div className="draft-head">
             <strong>Draft</strong>
             <span className="muted small">{session.level === 0 ? "The coach reads it; cards can't quote it at L0" : "The coach can quote it on cards"}</span>

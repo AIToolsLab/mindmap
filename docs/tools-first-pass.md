@@ -39,7 +39,7 @@ the rules are stated, and enforced only when an action executes.
 | `suggest_idea` below L2 | Offered, always refused, so the model learns the boundary and draws the idea out of the writer instead. The instructions and the tool description also say up front that it is refused (Nhyira, 10-28): the prompt tells the model it won't work, so it doesn't waste an attempt, and the handler's refusal stays as the real check in case it tries anyway or ignores the prompt. So the coach declining in words at L0 without trying the tool is expected. |
 | Memory between calls | None. Every call is stateless and sends everything (section 7), ordered so the provider's prompt cache covers the repeated part. No provider-side conversation storage. |
 | Suggestion adoption | Behind an on/off setting. Measured by shared runs of three or more words, not today's common-word list (see §9). The list is the fallback if runs prove problematic. |
-| Out of v1 | i18n, a restating tool, working memory, the fuzz harness (after v1), L3 (after v1), the Think/Map slider, steering buttons, voice, Control Room diagnostics, sign-in and deploy. |
+| Out of v1 | i18n, a restating tool, working memory, the fuzz harness (after v1), L3 (after v1), the Think/Map slider, steering buttons, voice (added 11-01, see §8), Control Room diagnostics, sign-in and deploy. |
 
 ## 3. Levels
 
@@ -71,8 +71,13 @@ provenance labels is a study-design question for later.
   tracking covers it. Undo also restores proposal states, so undoing an Accept makes
   that proposal pending again and the model is told. A `+ Card` left empty is removed.
 - **Proposals:** pending `{ id, kind: card | link | nest | suggestion, ... }`, each
-  accepted or rejected by the writer. A link or nest that refers to a pending card is
-  dropped if that card is rejected.
+  accepted or rejected by the writer. Links, nesting and a suggestion's `near_card`
+  refer only to cards on the map (`c3`), never to a card proposal still pending (`p5`):
+  the coach must not build on something the writer hasn't decided, or the writer is
+  pushed into deciding it later (Nhyira, 11-01; this replaces proposing a card and a
+  link to it in the same turn). A pending link or nest is dropped if a card it names is
+  deleted (or, in sessions saved earlier, rejected), so no Accept is left that can't
+  work.
 - **Level** (fixed for the length of a turn) and **settings** (`suggestionAdoption`).
 - **Provenance is set by code from what the handler found**, never passed by the model.
 
@@ -83,15 +88,22 @@ Saved in the browser, like today.
 All tools return a result to the model:
 
 ```json
-{ "ok": true,  "proposal": "p5", "shown_as": "card: \"X is bad\"" }
+{ "ok": true,  "proposal": "p5", "shown_as": "card: \"X is bad\"", "status": "pending: shown to the writer to accept or reject. It is not on the map until they accept it." }
 { "ok": false, "reason": "\"X is good\" is not in your messages", "attempts_left": 2 }
 ```
 
 ### Matching rule (used by every check)
 
 "Verbatim" means a plain substring match after mechanical normalization: Unicode NFC,
-lower-case, whitespace runs collapsed to one space, and straight/curly quotes treated
-alike. No other transformation.
+lower-case, punctuation ignored, and whitespace runs collapsed to one space. Apostrophes
+are dropped ("don't" matches "dont"); any other punctuation counts as a space
+("well-known" matches "well known"). No other transformation: every letter and number
+still has to match, in order, on word boundaries.
+
+- **Punctuation (Nhyira, 11-01):** ignored because dictated text has little of it and the
+  model tends to add some when it quotes, which cost refused attempts. It also lets a
+  writer punctuate a card without losing the link and nesting evidence for it. Fillers
+  ("um") are not removed: the model quotes around them with two pieces.
 
 When a piece matches in more than one message, record the most recent match, and all
 matches. Each accepted card keeps these `sources` (piece, most recent turn, every turn,
@@ -123,12 +135,14 @@ whether the draft also has it).
 ### 5.2 `propose_link`
 
 ```json
-{ "from_card": "c1", "to_card": "p5", "label": "because", "evidence": ["string", "..."] }
+{ "from_card": "c1", "to_card": "c3", "label": "because", "evidence": ["string", "..."] }
 ```
 
-`from_card` and `to_card` may be existing cards or card proposals from this turn.
+`from_card` and `to_card` are cards on the map. A card proposal the writer hasn't
+accepted (`p5`) is refused with the reason, at every level; an accepted proposal's id is
+refused with the card id to use instead (Nhyira, 11-01).
 
-- **Always (L0–L2):** both cards exist (or are pending), they differ, and no identical
+- **Always (L0–L2):** both cards are on the map, they differ, and no identical
   link exists.
 - **L0 and L1, the evidence rule:**
   1. `evidence` has one or two pieces, each verbatim in the writer's eligible messages.
@@ -149,7 +163,8 @@ whether the draft also has it).
 { "child": "c2", "parent": "c1", "evidence": ["string", "..."] }
 ```
 
-- **Always:** both exist, differ, and nesting would not create a cycle.
+- **Always:** both are cards on the map (as for links), differ, and nesting would not
+  create a cycle.
 - **L0 and L1:** the same evidence rule as links, steps 1–3 (no label).
 - **L2:** no evidence needed. An accepted L2 nesting keeps an `AI suggested` mark on the
   child (like an L2 link) until the writer re-nests the card themselves.
@@ -224,20 +239,36 @@ sessionless path, so v1 needs no sign-in.
 
 ## 8. What the writer sees
 
-- **Chat**, with each tool call as one line: tool name, a one-line summary, and the
-  result. Proposals have **Accept** and **Reject**; refusals have a collapsed **why**:
+- **Chat**, with each tool call as a small block: a top row with the tool name, its
+  label and **Accept**/**Reject** (or the outcome, e.g. "Accepted as card 3"), and the full
+  text underneath at any length. Pending proposals stand out; decided ones fade back; a
+  refusal is one quiet row whose reason opens on request (Nhyira, 11-01):
 
   ```
-  ✕ suggest_idea · refused                          ▸ why
-  ✓ propose_card · "X is bad"                       [Accept] [Reject]
-  ✓ propose_link · I like X → because → X is bad    [Accept] [Reject]
+  ✕ suggest_idea                                   refused · why
+  ✓ propose_card                                   [Accept] [Reject]
+    "X is bad"
+  ✓ propose_link  AI suggested                     [Accept] [Reject]
+    "I like X" → because → "X is bad"
   That sounds like the reason behind your doubt…
   ```
 
-- **Map:** accepted proposals appear; pending ones are not on the map.
+- **Map:** accepted proposals appear; pending ones are not on the map. Each card shows
+  its number (3 for the card the coach knows as `c3`; the instructions tell the coach
+  to say "card 3"), and an accepted card proposal says which card it became ("Accepted
+  as card 3"). A card's text is its edit box: click into it and type, Enter or clicking
+  away saves (one undo step), Escape reverts. The card is as tall as its text, so
+  nothing scrolls inside it; it is dragged by its top row (Nhyira, 11-01).
 - **Level picker:** a change applies from the next turn.
-- **Draft panel:** a box to paste the draft into.
+- **Draft panel:** a box to paste the draft into. Drag its left edge to make it wider or
+  narrower (arrow keys when the edge has focus, double-click to reset); the width is
+  remembered in this browser, and the map always keeps at least 280px (Nhyira, 11-01).
 - **Copy map** and **copy draft** out.
+- **Voice input (Nhyira, 11-01):** a mic button above Send, using the browser's own
+  speech recognition (the current app's `useSpeechToText`; Chrome, Edge and Safari, not
+  Firefox). Spoken words go into the message box, never straight to the coach: the
+  writer reads, edits and sends them like typed text. Typing or Send stops dictation.
+  Better transcription through the backend (punctuation, fewer fillers) is postponed.
 
 Keep it simple: no extra panels or diagnostics in v1.
 

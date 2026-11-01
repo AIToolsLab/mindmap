@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { emptySession, type HistoryItem, type Session } from "../state/types";
 import { visibleHistory } from "./context";
 import type { ModelCall, ModelRequest } from "./client";
-import { MAX_CALLS, runTurn } from "./turn";
+import { MAX_CALLS, PENDING_NOTE, runTurn } from "./turn";
 
 const call = (id: string, name: string, args: unknown) => ({ type: "function_call", call_id: id, name, arguments: JSON.stringify(args) });
 const say = (text: string) => ({ type: "message", content: [{ type: "output_text", text }] });
@@ -32,6 +32,13 @@ describe("runTurn", () => {
     expect(s.record.messages.at(-1)).toEqual({ turn: 1, text: "because X is bad" });
     expect(s.proposals).toHaveLength(1);
     expect(s.transcript.map((t) => t.kind)).toEqual(["writer", "tool", "coach"]);
+  });
+
+  it("tells the model a successful proposal is only pending, not on the map", async () => {
+    const { model } = fake([[call("a", "propose_card", { pieces: ["X is bad"] })], [say("ok")]]);
+    const s = await runTurn(start(), "because X is bad", { callModel: model });
+    const output = s.history.find((h): h is { type: "function_call_output"; call_id: string; output: string } => "type" in h && h.type === "function_call_output");
+    expect(JSON.parse(output!.output)).toMatchObject({ ok: true, proposal: "p1", status: PENDING_NOTE });
   });
 
   it("tells the model how many attempts are left, and goes text-only at zero", async () => {

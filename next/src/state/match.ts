@@ -2,15 +2,18 @@ import type { Level, WriterRecord } from "./types";
 
 /**
  * The matching rule every handler uses (spec §5): a mechanical comparison, never an
- * interpretation. Unicode NFC, lower-case, curly quotes treated as straight, and
- * whitespace runs collapsed to one space.
+ * interpretation. Unicode NFC, lower-case, punctuation ignored, and whitespace runs
+ * collapsed to one space, so only the letters, numbers and their order are compared.
+ * Apostrophes are dropped ("don't" matches "dont"); any other punctuation counts as a
+ * space ("well-known" matches "well known"). Dictated text has little punctuation and
+ * the model tends to add some when it quotes (Nhyira, 11-01).
  */
 export function norm(text: string): string {
   return text
     .normalize("NFC")
     .toLowerCase()
-    .replace(/[‘’]/g, "'")
-    .replace(/[“”]/g, '"')
+    .replace(/['‘’]/g, "")
+    .replace(/[^\p{L}\p{N}\p{M}\s]/gu, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
