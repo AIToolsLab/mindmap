@@ -131,6 +131,33 @@ describe("propose_link and propose_nest: the evidence rule", () => {
     const r = run(proposeLink, { from_card: "c1", to_card: "c2", label: "and", evidence: ["I like X"] }, s);
     expect(r.ok).toBe(false);
   });
+  it("allows free links at L2, shown as AI suggested", () => {
+    const s = withCards(["I like X", "Y matters"], "I like X", "Y matters", 2);
+    const r = run(proposeLink, { from_card: "c1", to_card: "c2", label: "leads to", evidence: [] }, s);
+    expect(r.ok && r.proposal.kind === "link" && r.proposal.provenance).toEqual({ kind: "ai_suggested" });
+  });
+
+  it("refuses links between missing, identical or already linked cards", () => {
+    const s = withCards(["I like X because X is bad"], "I like X", "X is bad", 2);
+    expect(run(proposeLink, { from_card: "c9", to_card: "c2", label: "", evidence: [] }, s).ok).toBe(false);
+    expect(run(proposeLink, { from_card: "c1", to_card: "c1", label: "", evidence: [] }, s).ok).toBe(false);
+    const linked = apply(s, run(proposeLink, { from_card: "c1", to_card: "c2", label: "x", evidence: [] }, s));
+    expect(run(proposeLink, { from_card: "c1", to_card: "c2", label: "y", evidence: [] }, linked).ok).toBe(false);
+  });
+
+  it("nests with evidence at L0 and refuses loops", () => {
+    const s = withCards(["put X is bad under I like X"], "I like X", "X is bad");
+    const r = run(proposeNest, { child: "c2", parent: "c1", evidence: ["put X is bad under I like X"] }, s);
+    expect(r.ok).toBe(true);
+    const nested = acceptProposal(apply(s, r), "p3");
+    expect(run(proposeNest, { child: "c1", parent: "c2", evidence: ["put X is bad under I like X"] }, nested)).toMatchObject({ ok: false });
+  });
+
+  it("refuses nesting without evidence at L0", () => {
+    const s = withCards(["I like X", "Y matters"], "I like X", "Y matters");
+    expect(run(proposeNest, { child: "c2", parent: "c1", evidence: [] }, s).ok).toBe(false);
+  });
+});
 
 describe("only cards on the map can be linked, nested or placed near (Nhyira, 11-01)", () => {
   // Two card proposals the writer hasn't decided on yet.
@@ -159,34 +186,6 @@ describe("only cards on the map can be linked, nested or placed near (Nhyira, 11
     expect(run(proposeLink, { from_card: "c1", to_card: "c2", label: "because", evidence: ["I like X because X is bad"] }, s).ok).toBe(true);
     // The proposal id of an accepted card points the model to its card id.
     expect(run(proposeLink, { from_card: "p1", to_card: "c2", label: "because", evidence: ["I like X because X is bad"] }, s)).toMatchObject({ ok: false, reason: "p1 is on the map as c1; use c1." });
-  });
-});
-
-  it("allows free links at L2, shown as AI suggested", () => {
-    const s = withCards(["I like X", "Y matters"], "I like X", "Y matters", 2);
-    const r = run(proposeLink, { from_card: "c1", to_card: "c2", label: "leads to", evidence: [] }, s);
-    expect(r.ok && r.proposal.kind === "link" && r.proposal.provenance).toEqual({ kind: "ai_suggested" });
-  });
-
-  it("refuses links between missing, identical or already linked cards", () => {
-    const s = withCards(["I like X because X is bad"], "I like X", "X is bad", 2);
-    expect(run(proposeLink, { from_card: "c9", to_card: "c2", label: "", evidence: [] }, s).ok).toBe(false);
-    expect(run(proposeLink, { from_card: "c1", to_card: "c1", label: "", evidence: [] }, s).ok).toBe(false);
-    const linked = apply(s, run(proposeLink, { from_card: "c1", to_card: "c2", label: "x", evidence: [] }, s));
-    expect(run(proposeLink, { from_card: "c1", to_card: "c2", label: "y", evidence: [] }, linked).ok).toBe(false);
-  });
-
-  it("nests with evidence at L0 and refuses loops", () => {
-    const s = withCards(["put X is bad under I like X"], "I like X", "X is bad");
-    const r = run(proposeNest, { child: "c2", parent: "c1", evidence: ["put X is bad under I like X"] }, s);
-    expect(r.ok).toBe(true);
-    const nested = acceptProposal(apply(s, r), "p3");
-    expect(run(proposeNest, { child: "c1", parent: "c2", evidence: ["put X is bad under I like X"] }, nested)).toMatchObject({ ok: false });
-  });
-
-  it("refuses nesting without evidence at L0", () => {
-    const s = withCards(["I like X", "Y matters"], "I like X", "Y matters");
-    expect(run(proposeNest, { child: "c2", parent: "c1", evidence: [] }, s).ok).toBe(false);
   });
 });
 
