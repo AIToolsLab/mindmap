@@ -58,12 +58,21 @@ export function findCard(map: MapState, id: string): Card | undefined {
   return map.cards.find((c) => c.id === id);
 }
 
-/** The text a model reference points at: an existing card, or a card proposal still pending. */
-export function refText(session: Session, ref: string): string | undefined {
+/**
+ * The text of the card on the map that a model reference (link, nesting, suggestion
+ * placement) points at, or why it can't point there. Only cards on the map count: a
+ * proposal the writer hasn't decided on mustn't be built on, or the writer gets pushed
+ * into deciding it later (Nhyira, 11-01).
+ */
+export function mapCardText(session: Session, ref: string): { text: string } | { reason: string } {
   const card = findCard(session.map, ref);
-  if (card) return card.text;
+  if (card) return { text: card.text };
   const p = session.proposals.find((x) => x.id === ref);
-  return p && p.kind === "card" && p.status === "pending" ? p.text : undefined;
+  if (p && (p.kind === "card" || p.kind === "suggestion")) {
+    if (p.status === "pending") return { reason: `${ref} isn't on the map: the writer hasn't accepted it. Only cards on the map can be used here.` };
+    if (p.cardId && findCard(session.map, p.cardId)) return { reason: `${ref} is on the map as ${p.cardId}; use ${p.cardId}.` };
+  }
+  return { reason: `There is no card "${ref}" on the map.` };
 }
 
 /** True if making `parent` the parent of `child` would create a loop. */
@@ -119,7 +128,7 @@ export function deleteCard(session: Session, id: string): Session {
     .filter((c) => c.id !== id)
     .map((c) => (c.parentId === id ? { ...c, parentId: null, parentProvenance: undefined, ...absolutePosition(s.map, c.id) } : c));
   const links = s.map.links.filter((l) => l.from !== id && l.to !== id);
-  return { ...s, map: { cards, links } };
+  return dropDependents({ ...s, map: { cards, links } }, id, "Its card was deleted.");
 }
 
 /** The writer's own nesting (or un-nesting with `null`). Clears any AI-suggested mark. */
@@ -240,12 +249,21 @@ export function acceptProposal(session: Session, id: string): Session {
 export function rejectProposal(session: Session, id: string): Session {
   const p = session.proposals.find((x) => x.id === id);
   if (!p || p.status !== "pending") return session;
-  let s = setStatus(session, id, "rejected");
-  // A link or nest that named this pending card can no longer happen.
+  // Sessions saved before links needed cards on the map can still name a pending card.
+  const s = dropDependents(setStatus(session, id, "rejected"), id, "Its card was rejected.");
+  return { ...s, decisions: [...s.decisions, `rejected ${p.id} (${describe(p)})`] };
+}
+
+/**
+ * A pending link or nesting that names `id` can no longer happen, so it is dropped
+ * rather than left with an Accept that can't work.
+ */
+function dropDependents(session: Session, id: string, note: string): Session {
+  let s = session;
   for (const other of s.proposals) {
     if (other.status !== "pending") continue;
     const refs = other.kind === "link" ? [other.from, other.to] : other.kind === "nest" ? [other.child, other.parent] : [];
-    if (refs.includes(id)) s = setStatus(s, other.id, "dropped", "Its card was rejected.");
+    if (refs.includes(id)) s = setStatus(s, other.id, "dropped", note);
   }
-  return { ...s, decisions: [...s.decisions, `rejected ${p.id} (${describe(p)})`] };
+  return s;
 }

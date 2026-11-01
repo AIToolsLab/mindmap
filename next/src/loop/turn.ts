@@ -7,6 +7,9 @@ import { ATTEMPT_BUDGET, instructions, stateBlock, visibleHistory } from "./cont
 /** Safety cap (spec §6): a turn never makes more model calls than this, whatever happens. */
 export const MAX_CALLS = 8;
 
+/** What a successful tool call tells the model about the proposal it made. */
+export const PENDING_NOTE = "pending: shown to the writer to accept or reject. It is not on the map until they accept it.";
+
 interface FunctionCall {
   type: "function_call";
   call_id: string;
@@ -119,7 +122,8 @@ export async function runTurn(start: Session, writerText: string, deps: TurnDeps
             proposals: [...s.proposals, result.proposal],
             transcript: [...s.transcript, { kind: "tool", name: call.name, summary: result.summary, ok: true, proposalId: result.proposal.id }],
           };
-          payload = { ok: true, proposal: result.proposal.id, shown_as: result.summary };
+          // Say it's only proposed, so the model doesn't tell the writer it's on the map.
+          payload = { ok: true, proposal: result.proposal.id, shown_as: result.summary, status: PENDING_NOTE };
         } else {
           attemptsLeft = Math.max(0, attemptsLeft - 1);
           s = { ...s, transcript: [...s.transcript, { kind: "tool", name: call.name, summary: result.summary, ok: false, reason: result.reason }] };

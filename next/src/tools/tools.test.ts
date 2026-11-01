@@ -132,12 +132,35 @@ describe("propose_link and propose_nest: the evidence rule", () => {
     expect(r.ok).toBe(false);
   });
 
-  it("can link to a card proposed earlier in the same turn", () => {
-    let s = session(["I like X because X is bad"]);
+describe("only cards on the map can be linked, nested or placed near (Nhyira, 11-01)", () => {
+  // Two card proposals the writer hasn't decided on yet.
+  function pendingCards(level: Level = 0): Session {
+    let s = session(["I like X because X is bad"], { level });
     s = apply(s, run(proposeCard, { pieces: ["I like X"] }, s));
-    s = apply(s, run(proposeCard, { pieces: ["X is bad"] }, s));
-    expect(run(proposeLink, { from_card: "p1", to_card: "p2", label: "because", evidence: ["I like X because X is bad"] }, s).ok).toBe(true);
+    return apply(s, run(proposeCard, { pieces: ["X is bad"] }, s));
+  }
+
+  it("refuses a link to a card the writer hasn't accepted, and says why", () => {
+    const r = run(proposeLink, { from_card: "p1", to_card: "p2", label: "because", evidence: ["I like X because X is bad"] }, pendingCards());
+    expect(r).toMatchObject({ ok: false, reason: "p1 isn't on the map: the writer hasn't accepted it. Only cards on the map can be used here." });
   });
+
+  it("refuses it at L2 too, where links are otherwise free", () => {
+    expect(run(proposeLink, { from_card: "p1", to_card: "p2", label: "could use", evidence: [] }, pendingCards(2)).ok).toBe(false);
+  });
+
+  it("refuses nesting under, and suggestions near, a card the writer hasn't accepted", () => {
+    expect(run(proposeNest, { child: "p2", parent: "p1", evidence: ["I like X because X is bad"] }, pendingCards()).ok).toBe(false);
+    expect(run(suggestIdea, { text: "Try Z", near_card: "p1" }, pendingCards(2)).ok).toBe(false);
+  });
+
+  it("links them once both are accepted, by their card ids", () => {
+    const s = acceptProposal(acceptProposal(pendingCards(), "p1"), "p2");
+    expect(run(proposeLink, { from_card: "c1", to_card: "c2", label: "because", evidence: ["I like X because X is bad"] }, s).ok).toBe(true);
+    // The proposal id of an accepted card points the model to its card id.
+    expect(run(proposeLink, { from_card: "p1", to_card: "c2", label: "because", evidence: ["I like X because X is bad"] }, s)).toMatchObject({ ok: false, reason: "p1 is on the map as c1; use c1." });
+  });
+});
 
   it("allows free links at L2, shown as AI suggested", () => {
     const s = withCards(["I like X", "Y matters"], "I like X", "Y matters", 2);
