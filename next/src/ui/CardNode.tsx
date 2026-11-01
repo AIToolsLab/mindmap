@@ -30,6 +30,8 @@ export function CardNode({ data }: NodeProps<CardFlowNode>) {
   const { card, editing, readOnly } = data;
   const [text, setText] = useState(card.text);
   const [focused, setFocused] = useState(false);
+  /** A parent's title is longer than the lines it shows over its children. */
+  const [clipped, setClipped] = useState(false);
   const cancelled = useRef(false);
   const box = useRef<HTMLTextAreaElement>(null);
 
@@ -43,7 +45,8 @@ export function CardNode({ data }: NodeProps<CardFlowNode>) {
     if (!el) return;
     el.style.height = "auto";
     el.style.height = `${el.scrollHeight}px`;
-  }, [text]);
+    setClipped(data.hasChildren && !focused && el.scrollHeight > el.clientHeight + 1);
+  }, [text, focused, data.hasChildren]);
 
   // React Flow shows a new node only once it's measured, so focusing at once can miss;
   // try again shortly after, or typing goes to whatever button still has focus.
@@ -81,7 +84,7 @@ export function CardNode({ data }: NodeProps<CardFlowNode>) {
       </div>
       <textarea
         ref={box}
-        className="card-text nodrag"
+        className={`card-text nodrag${clipped ? " clipped" : ""}`}
         rows={1}
         aria-label={`Card ${cardNumber(card.id)}`}
         placeholder="Write here"

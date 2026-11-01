@@ -24,10 +24,12 @@ export function absolutePosition(map: MapState, id: string): { x: number; y: num
   return { x, y };
 }
 
-// Where a newly nested card sits inside its parent (positions are parent-relative).
+// Where a newly nested card sits inside its parent (positions are parent-relative):
+// below the parent's title (up to three lines show), and far enough apart for cards
+// that grow with their text.
 const CHILD_LEFT = 16;
-const CHILD_TOP = 48;
-const CHILD_STEP = 110;
+const CHILD_TOP = 96;
+const CHILD_STEP = 140;
 
 /**
  * Re-parent a card and place it: inside the parent below its existing children, or,

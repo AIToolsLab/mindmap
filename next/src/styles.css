@@ -136,9 +136,11 @@ body.resizing { cursor: col-resize; user-select: none; }
   padding: 6px 10px 10px;
 }
 .card-parent { width: 100%; height: 100%; background: #fbfaf7; border-style: solid; border-color: #c9c3b6; }
-/* A parent's title stays two lines over its children, and opens up while it's edited. */
+/* A parent's title shows up to three lines over its children (fading out if there's
+   more), and opens up while it's edited. */
 .card-parent .card-text { font-weight: 600; }
-.card-parent .card-text:not(:focus) { max-height: 2.9em; }
+.card-parent .card-text:not(:focus) { max-height: 4.35em; }
+.card-text.clipped { mask-image: linear-gradient(to bottom, #000 calc(100% - 1.3em), transparent); }
 .card-ai { border-color: #c9b8dc; }
 .react-flow__node.selected > .card { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(26, 111, 163, 0.15); }
 .card-head { display: flex; align-items: center; gap: 4px; min-height: 22px; }
