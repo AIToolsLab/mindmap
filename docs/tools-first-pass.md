@@ -90,8 +90,15 @@ All tools return a result to the model:
 ### Matching rule (used by every check)
 
 "Verbatim" means a plain substring match after mechanical normalization: Unicode NFC,
-lower-case, whitespace runs collapsed to one space, and straight/curly quotes treated
-alike. No other transformation.
+lower-case, punctuation ignored, and whitespace runs collapsed to one space. Apostrophes
+are dropped ("don't" matches "dont"); any other punctuation counts as a space
+("well-known" matches "well known"). No other transformation: every letter and number
+still has to match, in order, on word boundaries.
+
+- **Punctuation (Nhyira, 11-01):** ignored because dictated text has little of it and the
+  model tends to add some when it quotes, which cost refused attempts. It also lets a
+  writer punctuate a card without losing the link and nesting evidence for it. Fillers
+  ("um") are not removed: the model quotes around them with two pieces.
 
 When a piece matches in more than one message, record the most recent match, and all
 matches. Each accepted card keeps these `sources` (piece, most recent turn, every turn,

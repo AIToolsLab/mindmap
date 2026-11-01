@@ -232,3 +232,51 @@ describe("typos (Nhyira, option A: quote exactly as typed)", () => {
     expect(proposeCard.description(0)).toContain("typos included");
   });
 });
+
+describe("punctuation is ignored (Nhyira, 11-01: for dictated text)", () => {
+  // Dictation gives words with little or no punctuation.
+  const spoken = session(["so i think the main problem with remote work is that nobody sees the small wins um and that makes people feel invisible"]);
+
+  it("accepts punctuation the writer didn't type", () => {
+    expect(run(proposeCard, { pieces: ["nobody sees the small wins."] }, spoken).ok).toBe(true);
+    expect(run(proposeCard, { pieces: ["the main problem with remote work, is that nobody sees"] }, spoken).ok).toBe(true);
+    expect(run(proposeCard, { pieces: ["“the small wins”"] }, spoken).ok).toBe(true);
+  });
+
+  it("accepts a piece without the punctuation the writer did type", () => {
+    const s = session(["Cost, mostly. And time; the well-known kind."]);
+    expect(run(proposeCard, { pieces: ["cost mostly and time"] }, s).ok).toBe(true);
+    expect(run(proposeCard, { pieces: ["the well known kind"] }, s).ok).toBe(true);
+  });
+
+  it("drops apostrophes, so don't and dont match both ways", () => {
+    expect(run(proposeCard, { pieces: ["I don't like it"] }, session(["i dont like it"])).ok).toBe(true);
+    expect(run(proposeCard, { pieces: ["I dont like it"] }, session(["I don’t like it"])).ok).toBe(true);
+  });
+
+  it("still compares every letter, word boundaries and fillers", () => {
+    expect(run(proposeCard, { pieces: ["I do now like it"] }, session(["I do not like it."])).ok).toBe(false);
+    expect(run(proposeCard, { pieces: ["ike it"] }, session(["I like it."])).ok).toBe(false);
+    // Leaving out a filler still needs two pieces around it.
+    expect(run(proposeCard, { pieces: ["the small wins and that makes people feel invisible"] }, spoken).ok).toBe(false);
+    expect(run(proposeCard, { pieces: ["the small wins", "and that makes people feel invisible"] }, spoken).ok).toBe(true);
+  });
+
+  it("refuses a piece that is only punctuation", () => {
+    const r = run(proposeCard, { pieces: ["..."] }, spoken);
+    expect(!r.ok && r.reason).toBe("Every piece needs at least one word.");
+  });
+
+  it("treats a card that differs only in punctuation as a duplicate", () => {
+    let s = session(["the real cost is time"]);
+    s = { ...s, map: { cards: [{ id: "c1", text: "The real cost is time.", parentId: null, provenance: { kind: "user" }, x: 0, y: 0 }], links: [] } };
+    const r = run(proposeCard, { pieces: ["the real cost is time"] }, s);
+    expect(!r.ok && r.reason).toContain("already on the map");
+  });
+
+  it("still links a card after the writer adds punctuation to it", () => {
+    let s = spoken;
+    s = { ...s, map: { cards: [{ id: "c1", text: "Remote work", parentId: null, provenance: { kind: "user" }, x: 0, y: 0 }, { id: "c2", text: "Nobody sees the small wins.", parentId: null, provenance: { kind: "user" }, x: 0, y: 0 }], links: [] } };
+    expect(run(proposeLink, { from_card: "c1", to_card: "c2", label: "is that", evidence: ["remote work is that nobody sees the small wins"] }, s).ok).toBe(true);
+  });
+});
