@@ -3,6 +3,16 @@ import type { Card, Link, MapState, Proposal, Session, StructureProvenance } fro
 
 const UNDO_LIMIT = 50;
 
+/** Card widths, in px. The writer can drag a card between the min and max. */
+export const CARD_W_DEFAULT = 220;
+export const CARD_W_MIN = 160;
+export const CARD_W_MAX = 640;
+
+/** The note on a link or nesting dropped because the card it named was rejected. */
+const REJECTED_NOTE = "Its card was rejected.";
+/** The note on a link or nesting dropped because the card it named was deleted. */
+const DELETED_NOTE = "Its card was deleted.";
+
 /** Next free spot for a top-level card in a simple grid, so new cards don't stack. */
 function nextPosition(map: MapState): { x: number; y: number } {
   const n = map.cards.filter((c) => !c.parentId).length;
@@ -123,6 +133,15 @@ export function moveCard(session: Session, id: string, x: number, y: number): Se
   return { ...session, map: { ...session.map, cards: session.map.cards.map((c) => (c.id === id ? { ...c, x, y } : c)) } };
 }
 
+/** Set a card's width, kept within the limits. Like moving, it's layout, so no undo step. */
+export function resizeCard(session: Session, id: string, width: number): Session {
+  const card = findCard(session.map, id);
+  if (!card) return session;
+  const w = Math.round(Math.min(CARD_W_MAX, Math.max(CARD_W_MIN, width)));
+  if ((card.w ?? CARD_W_DEFAULT) === w) return session;
+  return { ...session, map: { ...session.map, cards: session.map.cards.map((c) => (c.id === id ? { ...c, w } : c)) } };
+}
+
 export function deleteCard(session: Session, id: string): Session {
   const s = withUndo(session);
   // Children move up to the top level and keep their place on the canvas.
@@ -130,7 +149,7 @@ export function deleteCard(session: Session, id: string): Session {
     .filter((c) => c.id !== id)
     .map((c) => (c.parentId === id ? { ...c, parentId: null, parentProvenance: undefined, ...absolutePosition(s.map, c.id) } : c));
   const links = s.map.links.filter((l) => l.from !== id && l.to !== id);
-  return dropDependents({ ...s, map: { cards, links } }, id, "Its card was deleted.");
+  return dropDependents({ ...s, map: { cards, links } }, id, DELETED_NOTE);
 }
 
 /** The writer's own nesting (or un-nesting with `null`). Clears any AI-suggested mark. */
@@ -173,6 +192,7 @@ export function undo(session: Session): Session {
     const was = before.get(p.id);
     if (!was || (was.status === p.status && was.note === p.note)) return p;
     if (p.status === "accepted") undone.push(`writer undid accepting ${p.id} (${describe(p)}); it is pending again`);
+    if (p.status === "pending" && was.status === "rejected") undone.push(`writer undid restoring ${p.id} (${describe(p)}); it is rejected again`);
     return { ...p, status: was.status, note: was.note } as Proposal;
   });
   return { ...session, map: prev.map, proposals, undo: session.undo.slice(0, -1), decisions: [...session.decisions, ...undone] };
@@ -252,8 +272,35 @@ export function rejectProposal(session: Session, id: string): Session {
   const p = session.proposals.find((x) => x.id === id);
   if (!p || p.status !== "pending") return session;
   // Sessions saved before links needed cards on the map can still name a pending card.
-  const s = dropDependents(setStatus(session, id, "rejected"), id, "Its card was rejected.");
+  const s = dropDependents(setStatus(session, id, "rejected"), id, REJECTED_NOTE);
   return { ...s, decisions: [...s.decisions, `rejected ${p.id} (${describe(p)})`] };
+}
+
+/**
+ * Take back a Reject: the proposal is pending again, with Accept and Reject, and so are
+ * the links and nestings that were dropped only because it was rejected. The coach is
+ * told, since it already heard "rejected". It's its own undo step, so Undo takes back
+ * just the Restore.
+ */
+export function restoreProposal(session: Session, id: string): Session {
+  const p = session.proposals.find((x) => x.id === id);
+  if (!p || p.status !== "rejected") return session;
+  session = withUndo(session);
+  const pending = (x: Proposal): Proposal => {
+    const { note: _note, ...rest } = x;
+    return { ...rest, status: "pending" } as Proposal;
+  };
+  const proposals = session.proposals.map((x) => {
+    if (x.id === id) return pending(x);
+    if (x.status === "dropped" && x.note === REJECTED_NOTE && refsOf(x).includes(id)) return pending(x);
+    return x;
+  });
+  return { ...session, proposals, decisions: [...session.decisions, `writer took back rejecting ${p.id} (${describe(p)}); it is pending again`] };
+}
+
+/** The cards or proposals a link or nesting proposal names. */
+function refsOf(p: Proposal): string[] {
+  return p.kind === "link" ? [p.from, p.to] : p.kind === "nest" ? [p.child, p.parent] : [];
 }
 
 /**
@@ -264,8 +311,35 @@ function dropDependents(session: Session, id: string, note: string): Session {
   let s = session;
   for (const other of s.proposals) {
     if (other.status !== "pending") continue;
-    const refs = other.kind === "link" ? [other.from, other.to] : other.kind === "nest" ? [other.child, other.parent] : [];
-    if (refs.includes(id)) s = setStatus(s, other.id, "dropped", note);
+    if (refsOf(other).includes(id)) s = setStatus(s, other.id, "dropped", note);
   }
   return s;
+}
+
+/**
+ * Fold a coach turn's progress into what the writer has on screen. A turn works from a
+ * snapshot and never changes the map, the draft or the undo steps (only the writer's
+ * clicks do), so the writer can keep editing those while the coach thinks and nothing
+ * they did is lost when the turn lands. The chat, history and new proposals come from
+ * the turn. Proposals the writer already had keep the writer's state (deleting a card
+ * mid-turn can drop one). A new link or nesting naming a card the writer deleted
+ * meanwhile is dropped, as if it had been there at the delete. Accept, Reject, Restore
+ * and Undo wait for the turn, so the decisions the coach was told about stay exactly
+ * the ones the turn reported.
+ */
+export function mergeTurn(writer: Session, turn: Session): Session {
+  const mine = new Map(writer.proposals.map((p) => [p.id, p]));
+  const gone = (ref: string) => !resolve(writer, ref) && !turn.proposals.some((x) => x.id === ref && x.status === "pending");
+  const late = (p: Proposal): Proposal =>
+    p.status === "pending" && refsOf(p).some(gone) ? ({ ...p, status: "dropped", note: DELETED_NOTE } as Proposal) : p;
+  return {
+    ...turn,
+    level: writer.level,
+    settings: writer.settings,
+    map: writer.map,
+    undo: writer.undo,
+    record: { ...turn.record, draft: writer.record.draft },
+    counters: { ...turn.counters, card: writer.counters.card, link: writer.counters.link },
+    proposals: turn.proposals.map((p) => mine.get(p.id) ?? late(p)),
+  };
 }

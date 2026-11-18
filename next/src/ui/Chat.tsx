@@ -13,6 +13,8 @@ interface Props {
   onSend: (text: string) => void;
   onAccept: (id: string) => void;
   onReject: (id: string) => void;
+  /** Take back a Reject: the proposal is pending again. */
+  onRestore: (id: string) => void;
 }
 
 const STATUS: Record<Exclude<Proposal["status"], "pending">, string> = {
@@ -26,7 +28,7 @@ const STATUS: Record<Exclude<Proposal["status"], "pending">, string> = {
  * outcome), and the proposal's text underneath at any length. Pending proposals stand
  * out; decided ones fade back; a refusal is one quiet row with its reason on request.
  */
-function ToolLine({ item, session, busy, onAccept, onReject }: { item: Extract<TranscriptItem, { kind: "tool" }> } & Omit<Props, "onSend" | "sendDisabled">) {
+function ToolLine({ item, session, busy, onAccept, onReject, onRestore }: { item: Extract<TranscriptItem, { kind: "tool" }> } & Omit<Props, "onSend" | "sendDisabled">) {
   const [showWhy, setShowWhy] = useState(false);
   const proposal = item.proposalId ? session.proposals.find((p) => p.id === item.proposalId) : undefined;
   const pending = item.ok && proposal?.status === "pending";
@@ -56,6 +58,11 @@ function ToolLine({ item, session, busy, onAccept, onReject }: { item: Extract<T
               {STATUS[proposal.status]}
               {"cardId" in proposal && proposal.cardId ? ` as card ${cardNumber(proposal.cardId)}` : ""}
             </span>
+          )}
+          {item.ok && proposal?.status === "rejected" && (
+            <button type="button" className="restore" disabled={busy} title="Bring this back with Accept and Reject" onClick={() => onRestore(proposal.id)}>
+              Restore
+            </button>
           )}
           {!item.ok && (
             <button type="button" className="tool-why-toggle" aria-expanded={showWhy} onClick={() => setShowWhy((v) => !v)}>
@@ -98,7 +105,7 @@ function withBold(text: string): ReactNode[] {
   );
 }
 
-export function Chat({ session, busy, sendDisabled = false, onSend, onAccept, onReject }: Props) {
+export function Chat({ session, busy, sendDisabled = false, onSend, onAccept, onReject, onRestore }: Props) {
   const [text, setText] = useState("");
   const end = useRef<HTMLDivElement>(null);
   const box = useRef<HTMLTextAreaElement>(null);
@@ -159,7 +166,7 @@ export function Chat({ session, busy, sendDisabled = false, onSend, onAccept, on
         {session.transcript.length === 0 && <p className="muted chat-empty">Say what's on your mind. The coach can propose cards from your words; nothing reaches the map until you accept it.</p>}
         {session.transcript.map((item, i) =>
           item.kind === "tool" ? (
-            <ToolLine key={i} item={item} session={session} busy={busy} onAccept={onAccept} onReject={onReject} />
+            <ToolLine key={i} item={item} session={session} busy={busy} onAccept={onAccept} onReject={onReject} onRestore={onRestore} />
           ) : (
             <div key={i} className={`msg msg-${item.kind}`}>
               {item.kind === "coach" ? withBold(item.text) : item.text}

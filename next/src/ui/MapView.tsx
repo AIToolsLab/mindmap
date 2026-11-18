@@ -28,6 +28,7 @@ export interface MapActions {
   /** End of editing a card's text; `text` is null when it didn't change or was cancelled. */
   finishEdit: (id: string, text: string | null) => void;
   remove: (id: string) => void;
+  resize: (id: string, width: number) => void;
   link: (from: string, to: string) => void;
   relabel: (linkId: string) => void;
   unlink: (linkId: string) => void;
@@ -59,6 +60,7 @@ export function MapView({ map, readOnly, editId, setEditId, actions }: Props) {
       },
       onDelete: actions.remove,
       onTakeOut: actions.takeOut,
+      onResize: actions.resize,
     }),
     [readOnly, setEditId, actions],
   );

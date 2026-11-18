@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { MapState } from "../state/types";
 import { buildEdges, buildNodes, CARD_W } from "./flow";
 
-const noop = { readOnly: false, onFinishEdit: () => {}, onDelete: () => {}, onTakeOut: () => {} };
+const noop = { readOnly: false, onFinishEdit: () => {}, onDelete: () => {}, onTakeOut: () => {}, onResize: () => {} };
 const card = (id: string, parentId: string | null, x = 0, y = 0) => ({ id, text: id, parentId, provenance: { kind: "user" as const }, x, y });
 
 describe("map → canvas", () => {
@@ -15,6 +15,13 @@ describe("map → canvas", () => {
     expect(inner!.style!.width).toBeGreaterThanOrEqual(16 + CARD_W);
     expect(outer!.style!.width).toBeGreaterThan(inner!.style!.width as number); // holds the inner parent too
     expect(inner!.parentId).toBe("c1");
+  });
+
+  it("a parent is at least as wide as the writer made it, and never narrower than its children need", () => {
+    const wide: MapState = { cards: [{ ...card("c1", null), w: 500 }, card("c2", "c1", 16, 48)], links: [] };
+    expect(buildNodes(wide, [], null, noop)[0]!.style!.width).toBe(500);
+    const narrow: MapState = { cards: [{ ...card("c1", null), w: 160 }, card("c2", "c1", 16, 48)], links: [] };
+    expect(buildNodes(narrow, [], null, noop)[0]!.style!.width).toBeGreaterThanOrEqual(16 + CARD_W);
   });
 
   it("marks AI-suggested links", () => {

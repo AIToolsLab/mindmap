@@ -11,8 +11,11 @@ import {
   deleteLink,
   editCard,
   editLinkLabel,
+  mergeTurn,
   moveCard,
   rejectProposal,
+  resizeCard,
+  restoreProposal,
   setParent,
   undo,
 } from "../state/map";
@@ -70,38 +73,48 @@ export function App({ bearerToken, onAccessError, aiAccessDenied = false, onDisc
     return () => clearTimeout(t);
   }, [flash]);
 
-  /** Every writer edit goes through here; nothing changes while a turn runs (it works from a snapshot). */
+  /**
+   * The writer's own work: the map and the draft. Allowed while the coach thinks (#654).
+   * A turn never changes these, and `mergeTurn` keeps them when its result lands.
+   */
+  const edit = (fn: (s: Session) => Session) => {
+    setSession((s) => fn(s));
+  };
+  /**
+   * Decisions and settings: accept, reject, restore, undo, level. These wait for the
+   * turn, since the turn reports the writer's decisions to the coach as it ends.
+   */
   const act = (fn: (s: Session) => Session) => {
     if (!busyRef.current) setSession((s) => fn(s));
   };
 
   const actions = useMemo<MapActions>(
     () => ({
-      move: (id, x, y) => act((s) => moveCard(s, id, x, y)),
-      nest: (child, parent) => act((s) => setParent(s, child, parent)),
-      takeOutAt: (id, x, y) => act((s) => moveCard(setParent(s, id, null), id, x, y)),
-      takeOut: (id) => act((s) => setParent(s, id, null)),
+      move: (id, x, y) => edit((s) => moveCard(s, id, x, y)),
+      nest: (child, parent) => edit((s) => setParent(s, child, parent)),
+      takeOutAt: (id, x, y) => edit((s) => moveCard(setParent(s, id, null), id, x, y)),
+      takeOut: (id) => edit((s) => setParent(s, id, null)),
       finishEdit: (id, text) => {
         const isFresh = fresh.current === id;
         if (isFresh) fresh.current = null;
         const final = text ?? current.current.map.cards.find((c) => c.id === id)?.text ?? "";
         // Undo the "+ Card" step rather than delete, so no extra undo step is left behind.
-        if (isFresh && !final.trim()) act(undo);
-        else if (text !== null) act((s) => editCard(s, id, text));
+        if (isFresh && !final.trim()) edit(undo);
+        else if (text !== null) edit((s) => editCard(s, id, text));
       },
-      remove: (id) => act((s) => deleteCard(s, id)),
+      remove: (id) => edit((s) => deleteCard(s, id)),
+      resize: (id, width) => edit((s) => resizeCard(s, id, width)),
       link: (from, to) => {
-        if (busyRef.current) return;
         const label = window.prompt("Label for this link (optional):", "");
-        if (label !== null) act((s) => addLink(s, from, to, label.trim()));
+        if (label !== null) edit((s) => addLink(s, from, to, label.trim()));
       },
       relabel: (linkId) => {
         const link = current.current.map.links.find((l) => l.id === linkId);
-        if (!link || busyRef.current) return;
+        if (!link) return;
         const label = window.prompt("Link label:", link.label);
-        if (label !== null) act((s) => editLinkLabel(s, linkId, label.trim()));
+        if (label !== null) edit((s) => editLinkLabel(s, linkId, label.trim()));
       },
-      unlink: (linkId) => act((s) => deleteLink(s, linkId)),
+      unlink: (linkId) => edit((s) => deleteLink(s, linkId)),
     }),
     [],
   );
@@ -111,8 +124,9 @@ export function App({ bearerToken, onAccessError, aiAccessDenied = false, onDisc
     setEditId(null);
     setBusy(true);
     try {
-      const done = await runTurn(current.current, text, { callModel: makeCallResponses({ bearerToken, onAccessError }), onUpdate: setSession });
-      setSession(done);
+      const onUpdate = (turn: Session) => setSession((writer) => mergeTurn(writer, turn));
+      const done = await runTurn(current.current, text, { callModel: makeCallResponses({ bearerToken, onAccessError }), onUpdate });
+      onUpdate(done);
     } catch (error) {
       // runTurn reports its own errors; this only catches a failure outside it.
       const note = `Something went wrong: ${error instanceof Error ? error.message : String(error)}`;
@@ -123,12 +137,11 @@ export function App({ bearerToken, onAccessError, aiAccessDenied = false, onDisc
   };
 
   const newCard = () => {
-    if (busyRef.current) return;
     // Let go of the button at once, so a space or Enter typed before the new card's
     // editor takes focus can't press "+ Card" again.
     (document.activeElement as HTMLElement | null)?.blur();
     const id = `c${current.current.counters.card + 1}`;
-    act((s) => addCard(s, ""));
+    edit((s) => addCard(s, ""));
     fresh.current = id;
     setEditId(id);
   };
@@ -157,7 +170,7 @@ export function App({ bearerToken, onAccessError, aiAccessDenied = false, onDisc
         </label>
         <span className="muted small">applies from your next message</span>
         <span className="spacer" />
-        <button type="button" disabled={busy} onClick={newCard}>+ Card</button>
+        <button type="button" onClick={newCard}>+ Card</button>
         <button type="button" disabled={busy || !session.undo.length} onClick={() => act(undo)}>Undo</button>
         <button type="button" onClick={() => copy("map")}>Copy map</button>
         <button type="button" onClick={() => copy("draft")}>Copy draft</button>
@@ -176,11 +189,19 @@ export function App({ bearerToken, onAccessError, aiAccessDenied = false, onDisc
         </div>
       )}
       {/* Not allowed blocks sending only; accepting or rejecting proposals is a map edit. */}
-      <Chat session={session} busy={busy} sendDisabled={aiAccessDenied} onSend={send} onAccept={(id) => act((s) => acceptProposal(s, id))} onReject={(id) => act((s) => rejectProposal(s, id))} />
+      <Chat
+        session={session}
+        busy={busy}
+        sendDisabled={aiAccessDenied}
+        onSend={send}
+        onAccept={(id) => act((s) => acceptProposal(s, id))}
+        onReject={(id) => act((s) => rejectProposal(s, id))}
+        onRestore={(id) => act((s) => restoreProposal(s, id))}
+      />
 
       <main className="map" aria-label="Map">
         <ReactFlowProvider>
-          <MapView map={session.map} readOnly={busy} editId={editId} setEditId={setEditId} actions={actions} />
+          <MapView map={session.map} readOnly={false} editId={editId} setEditId={setEditId} actions={actions} />
         </ReactFlowProvider>
         {session.map.cards.length === 0 && <div className="map-empty muted">No cards yet</div>}
         <div className="map-hint muted small">Click a card's text to edit · drag a card by its top row · drop it on another to nest · drag out or "Out" to separate · drag from a card's dot to link · select a link + Delete to remove</div>
@@ -197,10 +218,9 @@ export function App({ bearerToken, onAccessError, aiAccessDenied = false, onDisc
             aria-label="Draft text"
             placeholder="Paste or type your draft here…"
             value={session.record.draft}
-            disabled={busy}
             onChange={(e) => {
               const draft = e.target.value;
-              act((s) => ({ ...s, record: { ...s.record, draft } }));
+              edit((s) => ({ ...s, record: { ...s.record, draft } }));
             }}
           />
         </aside>
