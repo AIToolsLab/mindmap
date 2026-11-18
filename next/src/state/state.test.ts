@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { runOverlap } from "./adoption";
-import { absolutePosition, acceptProposal, addCard, addLink, deleteCard, editCard, rejectProposal, setParent, undo } from "./map";
+import { absolutePosition, acceptProposal, addCard, addLink, CARD_W_MAX, CARD_W_MIN, deleteCard, editCard, mergeTurn, rejectProposal, resizeCard, restoreProposal, setParent, undo } from "./map";
 import { emptySession, type Proposal, type Session } from "./types";
 
 function withProposals(proposals: Proposal[]): Session {
@@ -141,5 +141,73 @@ describe("review minors: undo after Accept, editing quoted cards", () => {
     s = { ...s, map: { ...s.map, cards: s.map.cards.map((c) => ({ ...c, provenance: { kind: "ai_suggested" as const } })) } };
     s = editCard(s, "c1", "changed again");
     expect(s.map.cards[0]?.provenance).toEqual({ kind: "ai_suggested" });
+  });
+});
+
+describe("demo bugs: restore a rejected card (#655), edit while the coach thinks (#654), resize (#656)", () => {
+  const card = (id: string, text: string): Proposal => ({ id, status: "pending", kind: "card", text, provenance: { kind: "user" }, sources: [] });
+
+  it("restoring a rejected card makes it pending again, with the link that was dropped because of it", () => {
+    let s = withProposals([card("p1", "A"), card("p2", "B"), { id: "p3", status: "pending", kind: "link", from: "p1", to: "p2", label: "so", provenance: { kind: "user" } }]);
+    s = rejectProposal(s, "p1");
+    expect(s.proposals.map((p) => p.status)).toEqual(["rejected", "pending", "dropped"]);
+    s = restoreProposal(s, "p1");
+    expect(s.proposals.map((p) => p.status)).toEqual(["pending", "pending", "pending"]);
+    expect(s.proposals[2]?.note).toBeUndefined();
+    expect(s.decisions.at(-1)).toBe('writer took back rejecting p1 (card "A"); it is pending again');
+    // And it can then be accepted like any pending card.
+    expect(acceptProposal(s, "p1").map.cards).toHaveLength(1);
+  });
+
+  it("restoring leaves alone what was dropped for another reason, and only acts on rejected proposals", () => {
+    let s = withProposals([card("p1", "A"), { id: "p2", status: "dropped", note: "Its card was deleted.", kind: "nest", child: "p1", parent: "c9", provenance: { kind: "user" } }]);
+    s = rejectProposal(s, "p1");
+    s = restoreProposal(s, "p1");
+    expect(s.proposals[1]?.status).toBe("dropped");
+    expect(restoreProposal(s, "p1")).toBe(s); // already pending: nothing to restore
+  });
+
+  it("a turn landing keeps the map and draft edits the writer made while the coach was thinking", () => {
+    const start: Session = { ...addCard(withProposals([card("p1", "A")]), "mine"), record: { messages: [], draft: "old draft" } };
+    // The turn works from the snapshot: it adds a message, a reply and a proposal.
+    const turn: Session = {
+      ...start,
+      counters: { ...start.counters, turn: 1, proposal: 2 },
+      record: { ...start.record, messages: [{ turn: 1, text: "hi" }] },
+      transcript: [{ kind: "writer", text: "hi" }, { kind: "coach", text: "ok" }],
+      proposals: [...start.proposals, card("p2", "B")],
+    };
+    // Meanwhile the writer typed in the draft, edited and added a card, and deleted nothing.
+    let writer = { ...start, record: { ...start.record, draft: "new draft" } };
+    writer = addCard(editCard(writer, "c1", "mine, edited"), "another");
+    const merged = mergeTurn(writer, turn);
+    expect(merged.record).toEqual({ messages: [{ turn: 1, text: "hi" }], draft: "new draft" });
+    expect(merged.map.cards.map((c) => c.text)).toEqual(["mine, edited", "another"]);
+    expect(merged.counters).toMatchObject({ card: 2, turn: 1, proposal: 2 });
+    expect(merged.undo).toBe(writer.undo);
+    expect(merged.transcript).toHaveLength(2);
+    expect(merged.proposals.map((p) => p.id)).toEqual(["p1", "p2"]);
+    // Merging the same turn twice (an update, then the finished turn) changes nothing more.
+    expect(mergeTurn(merged, turn)).toEqual(merged);
+  });
+
+  it("a proposal the writer's mid-turn delete dropped stays dropped when the turn lands", () => {
+    let start = addCard(withProposals([]), "A");
+    start = { ...start, proposals: [{ id: "p1", status: "pending", kind: "link", from: "c1", to: "c1", label: "", provenance: { kind: "ai_suggested" } }] };
+    const writer = deleteCard(start, "c1");
+    const merged = mergeTurn(writer, { ...start, transcript: [{ kind: "coach", text: "ok" }] });
+    expect(merged.proposals[0]?.status).toBe("dropped");
+    expect(merged.map.cards).toHaveLength(0);
+  });
+
+  it("resizing a card keeps it within the limits and isn't an undo step", () => {
+    const s = addCard(emptySession(), "A");
+    expect(resizeCard(s, "c1", 300).map.cards[0]?.w).toBe(300);
+    expect(resizeCard(s, "c1", 10).map.cards[0]?.w).toBe(CARD_W_MIN);
+    expect(resizeCard(s, "c1", 5000).map.cards[0]?.w).toBe(CARD_W_MAX);
+    expect(resizeCard(s, "c1", 300).undo).toHaveLength(s.undo.length);
+    // Moving and nesting keep the width.
+    const nested = setParent(addCard(resizeCard(s, "c1", 300), "B"), "c1", "c2");
+    expect(nested.map.cards.find((c) => c.id === "c1")?.w).toBe(300);
   });
 });

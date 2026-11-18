@@ -61,6 +61,8 @@ export interface Card {
   /** Position, relative to the parent card when nested. */
   x: number;
   y: number;
+  /** Width the writer dragged the card to, in px. Unset means the default width. Layout only. */
+  w?: number;
   adoption?: AdoptionTrace;
 }
 

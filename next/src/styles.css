@@ -127,6 +127,7 @@ body.resizing { cursor: col-resize; user-select: none; }
 .map-empty { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-style: italic; pointer-events: none; }
 .map-hint { position: absolute; left: 56px; right: 230px; bottom: 10px; pointer-events: none; }
 .card {
+  position: relative;
   width: 220px;
   min-height: 80px;
   background: #fff;
@@ -155,6 +156,12 @@ body.resizing { cursor: col-resize; user-select: none; }
 .card-text::placeholder { color: var(--muted); font-style: italic; }
 .card:focus-within { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(26, 111, 163, 0.15); }
 .card-head { cursor: grab; }
+/* The resize grip: bottom-right corner, clear of the link dot on the right edge. */
+.card-resizer { position: absolute; right: 0; bottom: 0; width: 16px; height: 16px; cursor: ew-resize; touch-action: none; border-bottom-right-radius: 10px; opacity: 0; transition: opacity 0.15s; }
+.card-resizer::after { content: ""; position: absolute; right: 4px; bottom: 4px; width: 7px; height: 7px; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); border-bottom-right-radius: 2px; }
+.card:hover > .card-resizer, .card-resizer:focus-visible, body.resizing-card .card-resizer { opacity: 1; }
+.card-resizer:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
+body.resizing-card { cursor: ew-resize; user-select: none; }
 .react-flow__edge.edge-ai .react-flow__edge-path { stroke-dasharray: 6 4; stroke: var(--ai); }
 .react-flow__edge-text { font-size: 12px; }
 .react-flow__controls, .react-flow__minimap { border-radius: 10px; overflow: hidden; border: 1px solid var(--line); }

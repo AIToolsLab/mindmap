@@ -1,6 +1,7 @@
 import type { Edge, Node } from "@xyflow/react";
 import { structureLabel } from "../state/labels";
-import type { MapState } from "../state/types";
+import { CARD_W_DEFAULT } from "../state/map";
+import type { Card, MapState } from "../state/types";
 import type { CardFlowNode, CardNodeData } from "./CardNode";
 
 /**
@@ -9,7 +10,7 @@ import type { CardFlowNode, CardNodeData } from "./CardNode";
  * parent-relative); a parent card is sized to hold its children.
  */
 
-export const CARD_W = 220;
+export const CARD_W = CARD_W_DEFAULT;
 export const CARD_H = 96;
 const PAD = 16;
 
@@ -38,7 +39,7 @@ export function isInside(map: MapState, id: string, ancestor: string): boolean {
 }
 
 // Pick, not Omit: CardNodeData has an index signature, which Omit would flatten.
-type Callbacks = Pick<CardNodeData, "readOnly" | "onFinishEdit" | "onDelete" | "onTakeOut">;
+type Callbacks = Pick<CardNodeData, "readOnly" | "onFinishEdit" | "onDelete" | "onTakeOut" | "onResize">;
 
 /**
  * Nodes for the map, parents before children (React Flow requires it). Keeps each
@@ -65,8 +66,8 @@ export function buildNodes(map: MapState, prev: Node[], editId: string | null, c
 }
 
 /**
- * Give every parent card a size that holds its children, innermost parents first.
- * Leaf cards keep their natural (measured) size.
+ * Give every parent card a size that holds its children, innermost parents first, and
+ * at least the width the writer gave it. Leaf cards keep their natural (measured) size.
  */
 export function sizeParents<T extends Node>(nodes: T[]): T[] {
   const kids = new Map<string, T[]>();
@@ -87,7 +88,8 @@ export function sizeParents<T extends Node>(nodes: T[]): T[] {
   const parentIds = [...kids.keys()].sort((a, b) => depth(nodes.find((n) => n.id === b)!) - depth(nodes.find((n) => n.id === a)!));
   for (const id of parentIds) {
     const children = kids.get(id)!;
-    const w = Math.max(CARD_W + 2 * PAD, ...children.map((c) => c.position.x + sizeOf(c).w + PAD));
+    const chosen = (nodes.find((n) => n.id === id)?.data as { card?: Card } | undefined)?.card?.w;
+    const w = Math.max(chosen ?? CARD_W + 2 * PAD, ...children.map((c) => c.position.x + sizeOf(c).w + PAD));
     const h = Math.max(CARD_H, ...children.map((c) => c.position.y + sizeOf(c).h + PAD));
     sizes.set(id, { w, h });
   }

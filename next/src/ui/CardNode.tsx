@@ -1,6 +1,7 @@
-import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Handle, Position, useReactFlow, type Node, type NodeProps } from "@xyflow/react";
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { provenanceLabel, structureLabel } from "../state/labels";
+import { CARD_W_DEFAULT, CARD_W_MAX, CARD_W_MIN } from "../state/map";
 import type { Card } from "../state/types";
 
 export interface CardNodeData extends Record<string, unknown> {
@@ -12,6 +13,74 @@ export interface CardNodeData extends Record<string, unknown> {
   onFinishEdit: (id: string, text: string | null) => void;
   onDelete: (id: string) => void;
   onTakeOut: (id: string) => void;
+  /** End of a resize: the width the writer dragged the card to. */
+  onResize: (id: string, width: number) => void;
+}
+
+const clampWidth = (w: number) => Math.min(CARD_W_MAX, Math.max(CARD_W_MIN, w));
+
+/**
+ * The grip in a card's bottom-right corner: drag it to change the card's width, or use
+ * the arrow keys. Double-click goes back to the default width. The card shows the new
+ * width while dragging and saves it on release (a parent never gets narrower than what
+ * holds its children).
+ */
+function CardResizer({ card, onResize, onLive }: { card: Card; onResize: (id: string, width: number) => void; onLive: (width: number | null) => void }) {
+  const flow = useReactFlow();
+  const drag = useRef<{ x: number; width: number; zoom: number; last: number } | null>(null);
+
+  const start = (e: PointerEvent<HTMLDivElement>) => {
+    const box = e.currentTarget.closest(".card") as HTMLElement | null;
+    if (!box) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    // offsetWidth is the card's own width, before the canvas zoom is applied.
+    drag.current = { x: e.clientX, width: box.offsetWidth, zoom: flow.getZoom() || 1, last: box.offsetWidth };
+    document.body.classList.add("resizing-card");
+  };
+  const move = (e: PointerEvent<HTMLDivElement>) => {
+    const d = drag.current;
+    if (!d) return;
+    d.last = clampWidth(d.width + (e.clientX - d.x) / d.zoom);
+    onLive(d.last);
+  };
+  const end = () => {
+    const d = drag.current;
+    if (!d) return;
+    drag.current = null;
+    document.body.classList.remove("resizing-card");
+    onLive(null);
+    onResize(card.id, d.last);
+  };
+  const key = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    e.preventDefault();
+    e.stopPropagation();
+    const box = e.currentTarget.closest(".card") as HTMLElement | null;
+    const now = card.w ?? box?.offsetWidth ?? CARD_W_DEFAULT;
+    onResize(card.id, clampWidth(now + (e.key === "ArrowRight" ? 20 : -20)));
+  };
+
+  return (
+    <div
+      className="card-resizer nodrag nopan"
+      role="separator"
+      aria-orientation="vertical"
+      aria-label={`Resize card ${cardNumber(card.id)}`}
+      aria-valuemin={CARD_W_MIN}
+      aria-valuemax={CARD_W_MAX}
+      aria-valuenow={card.w ?? CARD_W_DEFAULT}
+      tabIndex={0}
+      title="Drag to resize · double-click to reset"
+      onPointerDown={start}
+      onPointerMove={move}
+      onPointerUp={end}
+      onPointerCancel={end}
+      onKeyDown={key}
+      onDoubleClick={() => onResize(card.id, CARD_W_DEFAULT)}
+    />
+  );
 }
 
 export type CardFlowNode = Node<CardNodeData, "card">;
@@ -34,6 +103,10 @@ export function CardNode({ data }: NodeProps<CardFlowNode>) {
   const [clipped, setClipped] = useState(false);
   const cancelled = useRef(false);
   const box = useRef<HTMLTextAreaElement>(null);
+  /** The width shown while the writer drags the resize grip. */
+  const [liveWidth, setLiveWidth] = useState<number | null>(null);
+  // A parent fills the box the layout gives it, which already includes its width.
+  const width = liveWidth ?? (data.hasChildren ? undefined : card.w);
 
   // Show changes made elsewhere (undo, the coach's turn), but never under the writer's caret.
   useEffect(() => {
@@ -62,7 +135,10 @@ export function CardNode({ data }: NodeProps<CardFlowNode>) {
   ].filter((b): b is string => !!b);
 
   return (
-    <div className={`card${data.hasChildren ? " card-parent" : ""}${card.provenance.kind === "ai_suggested" ? " card-ai" : ""}`}>
+    <div
+      className={`card${data.hasChildren ? " card-parent" : ""}${card.provenance.kind === "ai_suggested" ? " card-ai" : ""}`}
+      style={width ? { width } : undefined}
+    >
       <Handle type="target" position={Position.Left} />
       <div className="card-head">
         <span className="card-num" title={`Card ${cardNumber(card.id)}`}>{cardNumber(card.id)}</span>
@@ -112,6 +188,7 @@ export function CardNode({ data }: NodeProps<CardFlowNode>) {
         }}
       />
       <Handle type="source" position={Position.Right} />
+      {!readOnly && <CardResizer card={card} onResize={data.onResize} onLive={setLiveWidth} />}
     </div>
   );
 }
