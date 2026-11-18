@@ -10,6 +10,8 @@ export const CARD_W_MAX = 640;
 
 /** The note on a link or nesting dropped because the card it named was rejected. */
 const REJECTED_NOTE = "Its card was rejected.";
+/** The note on a link or nesting dropped because the card it named was deleted. */
+const DELETED_NOTE = "Its card was deleted.";
 
 /** Next free spot for a top-level card in a simple grid, so new cards don't stack. */
 function nextPosition(map: MapState): { x: number; y: number } {
@@ -147,7 +149,7 @@ export function deleteCard(session: Session, id: string): Session {
     .filter((c) => c.id !== id)
     .map((c) => (c.parentId === id ? { ...c, parentId: null, parentProvenance: undefined, ...absolutePosition(s.map, c.id) } : c));
   const links = s.map.links.filter((l) => l.from !== id && l.to !== id);
-  return dropDependents({ ...s, map: { cards, links } }, id, "Its card was deleted.");
+  return dropDependents({ ...s, map: { cards, links } }, id, DELETED_NOTE);
 }
 
 /** The writer's own nesting (or un-nesting with `null`). Clears any AI-suggested mark. */
@@ -190,6 +192,7 @@ export function undo(session: Session): Session {
     const was = before.get(p.id);
     if (!was || (was.status === p.status && was.note === p.note)) return p;
     if (p.status === "accepted") undone.push(`writer undid accepting ${p.id} (${describe(p)}); it is pending again`);
+    if (p.status === "pending" && was.status === "rejected") undone.push(`writer undid restoring ${p.id} (${describe(p)}); it is rejected again`);
     return { ...p, status: was.status, note: was.note } as Proposal;
   });
   return { ...session, map: prev.map, proposals, undo: session.undo.slice(0, -1), decisions: [...session.decisions, ...undone] };
@@ -276,11 +279,13 @@ export function rejectProposal(session: Session, id: string): Session {
 /**
  * Take back a Reject: the proposal is pending again, with Accept and Reject, and so are
  * the links and nestings that were dropped only because it was rejected. The coach is
- * told, since it already heard "rejected".
+ * told, since it already heard "rejected". It's its own undo step, so Undo takes back
+ * just the Restore.
  */
 export function restoreProposal(session: Session, id: string): Session {
   const p = session.proposals.find((x) => x.id === id);
   if (!p || p.status !== "rejected") return session;
+  session = withUndo(session);
   const pending = (x: Proposal): Proposal => {
     const { note: _note, ...rest } = x;
     return { ...rest, status: "pending" } as Proposal;
@@ -317,11 +322,16 @@ function dropDependents(session: Session, id: string, note: string): Session {
  * clicks do), so the writer can keep editing those while the coach thinks and nothing
  * they did is lost when the turn lands. The chat, history and new proposals come from
  * the turn. Proposals the writer already had keep the writer's state (deleting a card
- * mid-turn can drop one). Accept, Reject, Restore and Undo wait for the turn, so the
- * decisions the coach was told about stay exactly the ones the turn reported.
+ * mid-turn can drop one). A new link or nesting naming a card the writer deleted
+ * meanwhile is dropped, as if it had been there at the delete. Accept, Reject, Restore
+ * and Undo wait for the turn, so the decisions the coach was told about stay exactly
+ * the ones the turn reported.
  */
 export function mergeTurn(writer: Session, turn: Session): Session {
   const mine = new Map(writer.proposals.map((p) => [p.id, p]));
+  const gone = (ref: string) => !resolve(writer, ref) && !turn.proposals.some((x) => x.id === ref && x.status === "pending");
+  const late = (p: Proposal): Proposal =>
+    p.status === "pending" && refsOf(p).some(gone) ? ({ ...p, status: "dropped", note: DELETED_NOTE } as Proposal) : p;
   return {
     ...turn,
     level: writer.level,
@@ -330,6 +340,6 @@ export function mergeTurn(writer: Session, turn: Session): Session {
     undo: writer.undo,
     record: { ...turn.record, draft: writer.record.draft },
     counters: { ...turn.counters, card: writer.counters.card, link: writer.counters.link },
-    proposals: turn.proposals.map((p) => mine.get(p.id) ?? p),
+    proposals: turn.proposals.map((p) => mine.get(p.id) ?? late(p)),
   };
 }

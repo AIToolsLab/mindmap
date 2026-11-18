@@ -13,6 +13,13 @@ import type { CardFlowNode, CardNodeData } from "./CardNode";
 export const CARD_W = CARD_W_DEFAULT;
 export const CARD_H = 96;
 const PAD = 16;
+/** A parent's width when the writer hasn't set one. */
+export const PARENT_MIN_W = CARD_W + 2 * PAD;
+
+/** The width a parent needs to hold these children (0 when there are none). */
+export function childrenWidth(children: { position: { x: number }; measured?: { width?: number } }[], widthOf?: (i: number) => number): number {
+  return Math.max(0, ...children.map((c, i) => c.position.x + (widthOf?.(i) ?? c.measured?.width ?? CARD_W) + PAD));
+}
 
 export function depthOf(map: MapState, id: string): number {
   let d = 0;
@@ -89,7 +96,7 @@ export function sizeParents<T extends Node>(nodes: T[]): T[] {
   for (const id of parentIds) {
     const children = kids.get(id)!;
     const chosen = (nodes.find((n) => n.id === id)?.data as { card?: Card } | undefined)?.card?.w;
-    const w = Math.max(chosen ?? CARD_W + 2 * PAD, ...children.map((c) => c.position.x + sizeOf(c).w + PAD));
+    const w = Math.max(chosen ?? PARENT_MIN_W, childrenWidth(children, (i) => sizeOf(children[i]!).w));
     const h = Math.max(CARD_H, ...children.map((c) => c.position.y + sizeOf(c).h + PAD));
     sizes.set(id, { w, h });
   }

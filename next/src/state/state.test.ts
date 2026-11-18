@@ -200,6 +200,28 @@ describe("demo bugs: restore a rejected card (#655), edit while the coach thinks
     expect(merged.map.cards).toHaveLength(0);
   });
 
+  it("Undo after Restore takes back only the Restore, and tells the coach", () => {
+    let s = withProposals([card("p1", "A"), card("p2", "B")]);
+    s = rejectProposal(s, "p1");
+    s = acceptProposal(s, "p2");
+    s = restoreProposal(s, "p1");
+    s = undo(s);
+    expect(s.proposals.map((p) => `${p.id}:${p.status}`)).toEqual(["p1:rejected", "p2:accepted"]);
+    expect(s.map.cards).toHaveLength(1);
+    expect(s.decisions.at(-1)).toBe('writer undid restoring p1 (card "A"); it is rejected again');
+  });
+
+  it("a link the coach proposes to a card the writer deleted mid-turn is dropped when the turn lands", () => {
+    const start = addCard(addCard(withProposals([]), "A"), "B");
+    const writer = deleteCard(start, "c1");
+    const link: Proposal = { id: "p1", status: "pending", kind: "link", from: "c1", to: "c2", label: "so", provenance: { kind: "ai_suggested" } };
+    const turn = { ...start, proposals: [link], counters: { ...start.counters, proposal: 1 } };
+    const merged = mergeTurn(writer, turn);
+    expect(merged.proposals[0]).toMatchObject({ status: "dropped", note: "Its card was deleted." });
+    // A link between cards that are still there stays pending.
+    expect(mergeTurn(start, turn).proposals[0]?.status).toBe("pending");
+  });
+
   it("resizing a card keeps it within the limits and isn't an undo step", () => {
     const s = addCard(emptySession(), "A");
     expect(resizeCard(s, "c1", 300).map.cards[0]?.w).toBe(300);

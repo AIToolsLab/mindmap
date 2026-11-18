@@ -124,8 +124,6 @@ export function App({ bearerToken, onAccessError, aiAccessDenied = false, onDisc
     setEditId(null);
     setBusy(true);
     try {
-      // The turn runs from this snapshot; each update is merged with whatever the writer
-      // has done since, so edits made while the coach thinks are kept.
       const onUpdate = (turn: Session) => setSession((writer) => mergeTurn(writer, turn));
       const done = await runTurn(current.current, text, { callModel: makeCallResponses({ bearerToken, onAccessError }), onUpdate });
       onUpdate(done);
@@ -203,7 +201,6 @@ export function App({ bearerToken, onAccessError, aiAccessDenied = false, onDisc
 
       <main className="map" aria-label="Map">
         <ReactFlowProvider>
-          {/* The map stays editable while the coach thinks (#654). */}
           <MapView map={session.map} readOnly={false} editId={editId} setEditId={setEditId} actions={actions} />
         </ReactFlowProvider>
         {session.map.cards.length === 0 && <div className="map-empty muted">No cards yet</div>}

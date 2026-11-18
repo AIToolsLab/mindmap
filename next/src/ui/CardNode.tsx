@@ -1,8 +1,9 @@
-import { Handle, Position, useReactFlow, type Node, type NodeProps } from "@xyflow/react";
-import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
+import { Handle, Position, useReactFlow, useStore, type Node, type NodeProps } from "@xyflow/react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { provenanceLabel, structureLabel } from "../state/labels";
 import { CARD_W_DEFAULT, CARD_W_MAX, CARD_W_MIN } from "../state/map";
 import type { Card } from "../state/types";
+import { CARD_W, childrenWidth, PARENT_MIN_W } from "./flow";
 
 export interface CardNodeData extends Record<string, unknown> {
   card: Card;
@@ -17,32 +18,33 @@ export interface CardNodeData extends Record<string, unknown> {
   onResize: (id: string, width: number) => void;
 }
 
-const clampWidth = (w: number) => Math.min(CARD_W_MAX, Math.max(CARD_W_MIN, w));
-
 /**
  * The grip in a card's bottom-right corner: drag it to change the card's width, or use
- * the arrow keys. Double-click goes back to the default width. The card shows the new
- * width while dragging and saves it on release (a parent never gets narrower than what
- * holds its children).
+ * the arrow keys. Double-click goes back to the default width. `shown` is the width on
+ * screen and `min` the narrowest the card can be (a parent needs room for its children),
+ * so the preview, the keys and the announced value all match what's drawn.
  */
-function CardResizer({ card, onResize, onLive }: { card: Card; onResize: (id: string, width: number) => void; onLive: (width: number | null) => void }) {
+function CardResizer({ card, shown, min, onResize, onLive }: { card: Card; shown: number; min: number; onResize: (id: string, width: number) => void; onLive: (width: number | null) => void }) {
   const flow = useReactFlow();
   const drag = useRef<{ x: number; width: number; zoom: number; last: number } | null>(null);
+  // Key presses that come faster than a redraw build on each other, not on a stale `shown`.
+  const keyed = useRef<number | null>(null);
+  useEffect(() => {
+    keyed.current = null;
+  }, [shown]);
+  const clamp = (w: number) => Math.max(min, Math.min(CARD_W_MAX, w));
 
   const start = (e: PointerEvent<HTMLDivElement>) => {
-    const box = e.currentTarget.closest(".card") as HTMLElement | null;
-    if (!box) return;
     e.preventDefault();
     e.stopPropagation();
     e.currentTarget.setPointerCapture(e.pointerId);
-    // offsetWidth is the card's own width, before the canvas zoom is applied.
-    drag.current = { x: e.clientX, width: box.offsetWidth, zoom: flow.getZoom() || 1, last: box.offsetWidth };
+    drag.current = { x: e.clientX, width: shown, zoom: flow.getZoom() || 1, last: shown };
     document.body.classList.add("resizing-card");
   };
   const move = (e: PointerEvent<HTMLDivElement>) => {
     const d = drag.current;
     if (!d) return;
-    d.last = clampWidth(d.width + (e.clientX - d.x) / d.zoom);
+    d.last = clamp(d.width + (e.clientX - d.x) / d.zoom);
     onLive(d.last);
   };
   const end = () => {
@@ -57,9 +59,8 @@ function CardResizer({ card, onResize, onLive }: { card: Card; onResize: (id: st
     if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
     e.preventDefault();
     e.stopPropagation();
-    const box = e.currentTarget.closest(".card") as HTMLElement | null;
-    const now = card.w ?? box?.offsetWidth ?? CARD_W_DEFAULT;
-    onResize(card.id, clampWidth(now + (e.key === "ArrowRight" ? 20 : -20)));
+    keyed.current = clamp((keyed.current ?? shown) + (e.key === "ArrowRight" ? 20 : -20));
+    onResize(card.id, keyed.current);
   };
 
   return (
@@ -68,9 +69,9 @@ function CardResizer({ card, onResize, onLive }: { card: Card; onResize: (id: st
       role="separator"
       aria-orientation="vertical"
       aria-label={`Resize card ${cardNumber(card.id)}`}
-      aria-valuemin={CARD_W_MIN}
-      aria-valuemax={CARD_W_MAX}
-      aria-valuenow={card.w ?? CARD_W_DEFAULT}
+      aria-valuemin={min}
+      aria-valuemax={Math.max(min, CARD_W_MAX)}
+      aria-valuenow={Math.round(shown)}
       tabIndex={0}
       title="Drag to resize · double-click to reset"
       onPointerDown={start}
@@ -107,19 +108,39 @@ export function CardNode({ data }: NodeProps<CardFlowNode>) {
   const [liveWidth, setLiveWidth] = useState<number | null>(null);
   // A parent fills the box the layout gives it, which already includes its width.
   const width = liveWidth ?? (data.hasChildren ? undefined : card.w);
+  // The room this card's children take up (0 for a leaf), the same sum the layout uses.
+  const childrenNeed = useStore(
+    useCallback((s) => childrenWidth([...s.nodeLookup.values()].filter((n) => n.parentId === card.id)), [card.id]),
+  );
+  const min = Math.max(CARD_W_MIN, childrenNeed);
+  const shown = liveWidth ?? Math.max(card.w ?? (data.hasChildren ? PARENT_MIN_W : CARD_W), childrenNeed);
 
   // Show changes made elsewhere (undo, the coach's turn), but never under the writer's caret.
   useEffect(() => {
     if (!focused) setText(card.text);
   }, [card.text, focused]);
 
-  useLayoutEffect(() => {
+  // The card is as tall as its text, which depends on its width too.
+  const fit = useCallback(() => {
     const el = box.current;
     if (!el) return;
     el.style.height = "auto";
     el.style.height = `${el.scrollHeight}px`;
     setClipped(data.hasChildren && !focused && el.scrollHeight > el.clientHeight + 1);
-  }, [text, focused, data.hasChildren]);
+  }, [focused, data.hasChildren]);
+  useLayoutEffect(fit, [text, fit]);
+  useEffect(() => {
+    const el = box.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    let last = el.clientWidth;
+    const watch = new ResizeObserver(() => {
+      if (el.clientWidth === last) return; // height changes come from fit() itself
+      last = el.clientWidth;
+      fit();
+    });
+    watch.observe(el);
+    return () => watch.disconnect();
+  }, [fit]);
 
   // React Flow shows a new node only once it's measured, so focusing at once can miss;
   // try again shortly after, or typing goes to whatever button still has focus.
@@ -188,7 +209,7 @@ export function CardNode({ data }: NodeProps<CardFlowNode>) {
         }}
       />
       <Handle type="source" position={Position.Right} />
-      {!readOnly && <CardResizer card={card} onResize={data.onResize} onLive={setLiveWidth} />}
+      {!readOnly && <CardResizer card={card} shown={shown} min={min} onResize={data.onResize} onLive={setLiveWidth} />}
     </div>
   );
 }
